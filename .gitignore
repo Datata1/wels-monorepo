@@ -13,6 +13,9 @@ build/
 # uv
 uv.lock
 
+# moon cache
+.moon/cache/
+
 # Environment variables
 .env
 .env.local
