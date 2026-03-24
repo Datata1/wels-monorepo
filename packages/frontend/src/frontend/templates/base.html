@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WELS — Handball Analytics</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+    <nav class="bg-wels-navy text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <a href="/" class="text-xl font-bold tracking-tight hover:text-wels-accent transition-colors">
+                WELS
+            </a>
+            <div class="flex gap-6 text-sm font-medium">
+                <a href="/" class="hover:text-wels-accent transition-colors">Dashboard</a>
+                <a href="/standings" class="hover:text-wels-accent transition-colors">Standings</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="mt-16 border-t border-gray-200 py-6 text-center text-sm text-gray-400">
+        WELS Handball Analytics &mdash; match analysis &amp; strategy assistant
+    </footer>
+</body>
+</html>

@@ -1,0 +1,130 @@
+{# ── Page-level components ─────────────────────────────────────── #}
+
+{% macro page_header(title, subtitle) %}
+<header class="mb-8">
+    <h1 class="text-3xl font-bold text-wels-navy">{{ title }}</h1>
+    <p class="mt-1 text-gray-500">{{ subtitle }}</p>
+</header>
+{% endmacro %}
+
+
+{% macro section_heading(text) %}
+<h2 class="text-lg font-semibold text-wels-blue mb-4">{{ text }}</h2>
+{% endmacro %}
+
+
+{# ── Match components ─────────────────────────────────────────── #}
+
+{% macro status_badge(status) %}
+{% if status == "completed" %}
+<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Completed</span>
+{% elif status == "live" %}
+<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 animate-pulse">Live</span>
+{% else %}
+<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600">Upcoming</span>
+{% endif %}
+{% endmacro %}
+
+
+{% macro match_card(match) %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+    <div class="flex items-center justify-between">
+        <div class="flex-1">
+            <div class="flex items-center gap-3">
+                <span class="font-semibold text-wels-navy">{{ match.home_team }}</span>
+                <span class="text-2xl font-bold text-wels-blue">{{ match.home_score }}</span>
+                <span class="text-gray-400 text-sm">–</span>
+                <span class="text-2xl font-bold text-wels-blue">{{ match.away_score }}</span>
+                <span class="font-semibold text-wels-navy">{{ match.away_team }}</span>
+            </div>
+            <div class="mt-1 flex items-center gap-3 text-sm text-gray-500">
+                <span>{{ match.date }}</span>
+                <span>&middot;</span>
+                <span>{{ match.venue }}</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            {{ status_badge(match.status) }}
+            <button
+                hx-get="/partials/match/{{ match.id }}"
+                hx-target="#match-detail"
+                hx-swap="innerHTML"
+                class="ml-2 px-3 py-1 text-sm font-medium text-white bg-wels-blue rounded hover:bg-wels-navy transition-colors"
+            >
+                Details
+            </button>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+
+{# ── Event timeline components ────────────────────────────────── #}
+
+{% macro event_icon(event_type) %}
+{% if event_type == "goal" %}
+<span class="inline-block w-5 h-5 rounded-full bg-green-100 text-green-600 text-center leading-5 text-xs">⚽</span>
+{% elif event_type == "save" %}
+<span class="inline-block w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-center leading-5 text-xs">🧤</span>
+{% elif event_type == "turnover" %}
+<span class="inline-block w-5 h-5 rounded-full bg-yellow-100 text-yellow-600 text-center leading-5 text-xs">⚠</span>
+{% elif event_type == "timeout" %}
+<span class="inline-block w-5 h-5 rounded-full bg-gray-100 text-gray-600 text-center leading-5 text-xs">⏸</span>
+{% else %}
+<span class="inline-block w-5 h-5 rounded-full bg-purple-100 text-purple-600 text-center leading-5 text-xs">🔄</span>
+{% endif %}
+{% endmacro %}
+
+
+{% macro event_timeline_item(event) %}
+<div class="flex items-start gap-3 text-sm">
+    <span class="w-10 text-right font-mono text-gray-400 shrink-0">{{ event.minute }}'</span>
+    <span class="shrink-0">{{ event_icon(event.event_type) }}</span>
+    <div>
+        <span class="font-medium text-wels-navy">{{ event.player }}</span>
+        <span class="text-gray-400">({{ event.team }})</span>
+        <span class="text-gray-500">— {{ event.description }}</span>
+    </div>
+</div>
+{% endmacro %}
+
+
+{# ── Player stats table ──────────────────────────────────────── #}
+
+{% macro player_stats_table(players, team_name) %}
+<div>
+    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{{ team_name }}</h4>
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-gray-400 border-b">
+                <th class="pb-2 font-medium">Player</th>
+                <th class="pb-2 font-medium text-center">G</th>
+                <th class="pb-2 font-medium text-center">A</th>
+                <th class="pb-2 font-medium text-center">S</th>
+                <th class="pb-2 font-medium text-center">TO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in players %}
+            <tr class="border-b border-gray-50">
+                <td class="py-1.5 font-medium text-wels-navy">{{ p.name }}</td>
+                <td class="py-1.5 text-center">{{ p.goals }}</td>
+                <td class="py-1.5 text-center">{{ p.assists }}</td>
+                <td class="py-1.5 text-center">{{ p.saves }}</td>
+                <td class="py-1.5 text-center">{{ p.turnovers }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+
+{# ── Standings row ────────────────────────────────────────────── #}
+
+{% macro goal_diff(scored, conceded) %}
+{% set diff = scored - conceded %}
+<span class="font-medium {% if diff > 0 %}text-green-600{% elif diff < 0 %}text-red-600{% else %}text-gray-500{% endif %}">
+    {{ diff }}
+</span>
+{% endmacro %}

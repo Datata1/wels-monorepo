@@ -1,0 +1,11 @@
+{% from "components/macros.html" import match_card %}
+
+{% for match in matches %}
+{{ match_card(match) }}
+{% else %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+    <p class="text-gray-400">No matches recorded yet.</p>
+</div>
+{% endfor %}
+
+<div id="match-detail" class="mt-6"></div>

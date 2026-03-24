@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import page_header %}
+
+{% block content %}
+{{ page_header("Standings", "Current league table.") }}
+
+<section>
+    <div
+        hx-get="/partials/standings"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+        class="bg-white rounded-lg shadow-sm border border-gray-100 p-6"
+    >
+        <p class="text-gray-400 animate-pulse">Loading standings…</p>
+    </div>
+</section>
+{% endblock %}

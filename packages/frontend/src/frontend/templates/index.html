@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import page_header, section_heading %}
+
+{% block content %}
+{{ page_header("Dashboard", "Recent matches and upcoming fixtures.") }}
+
+<section id="matches">
+    {{ section_heading("Matches") }}
+    <div
+        hx-get="/partials/matches"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+        class="space-y-3"
+    >
+        <p class="text-gray-400 animate-pulse">Loading matches…</p>
+    </div>
+</section>
+{% endblock %}
