@@ -7,10 +7,14 @@ A monorepo for a handball analytics platform that helps trainers analyze matches
 ```
 wels-monorepo/
 ├── packages/
-│   ├── backend/    # FastAPI backend (API layer above the database)
-│   └── frontend/   # HTMX-based frontend served by FastAPI
+│   ├── backend/    # FastAPI API server (port 8000)
+│   └── frontend/   # HTMX + Jinja2 frontend served by FastAPI (port 3000)
+├── docs/           # MkDocs documentation source
+├── .moon/          # moon workspace config
 ├── Makefile        # Top-level commands for managing all packages
-└── ruff.toml       # Shared ruff linting config
+├── mkdocs.yml      # Documentation site config
+├── ruff.toml       # Shared linting/formatting config
+└── ty.toml         # Shared type checking config
 ```
 
 Each Python package under `packages/` has its **own virtual environment** managed by [uv](https://docs.astral.sh/uv/).
@@ -19,28 +23,73 @@ Each Python package under `packages/` has its **own virtual environment** manage
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- [ruff](https://docs.astral.sh/ruff/) (installed per-package via uv)
+
+All other tools (ruff, ty, Tailwind CSS, moon) are installed automatically via `make setup`.
 
 ## Quick Start
 
 ```bash
-# Set up all packages (creates venvs + installs deps)
+# Set up everything (venvs, deps, Tailwind, moon, pre-commit hooks)
 make setup
 
-# Run the backend
-make run-backend
+# Start the full platform (backend + frontend + Tailwind watcher + docs)
+make dev
+```
 
-# Run the frontend
-make run-frontend
+This launches:
 
-# Lint all packages
-make lint
+| Service  | URL                        |
+|----------|----------------------------|
+| Backend  | http://localhost:8000       |
+| Frontend | http://localhost:3000       |
+| Docs     | http://localhost:8080       |
 
-# Format all packages
-make format
+Press `Ctrl+C` to stop all services.
 
-# Run all tests
-make test
+## Commands
+
+### Development
+
+```bash
+make dev              # Start all services in parallel
+make run-backend      # Backend only
+make run-frontend     # Frontend only
+make docs             # Documentation site only
+```
+
+### Code Quality
+
+```bash
+make lint             # Lint all packages (ruff)
+make format           # Auto-format all packages (ruff)
+make typecheck        # Type check all packages (ty)
+make test             # Run all tests (pytest)
+make test-integration # Integration tests only
+make test-ui          # UI tests only (frontend)
+```
+
+### moon (parallel + cached)
+
+[moon](https://moonrepo.dev/) is used for parallel task execution with content-aware caching:
+
+```bash
+./tools/moon run :lint       # Lint all packages in parallel
+./tools/moon run :test       # Test all packages in parallel
+./tools/moon run :typecheck  # Type check all packages in parallel
+```
+
+### Tailwind CSS
+
+```bash
+make tailwind         # One-off build (minified)
+make tailwind-watch   # Watch mode
+```
+
+### Documentation
+
+```bash
+make docs             # Live-reload server at http://localhost:8080
+make docs-build       # Build static site to site/
 ```
 
 ## Package Management
@@ -54,3 +103,16 @@ cd packages/backend && uv add <package>
 # Add a dev dependency to the frontend
 cd packages/frontend && uv add --dev <package>
 ```
+
+## Tooling
+
+| Tool | Purpose | Config |
+|------|---------|--------|
+| [uv](https://docs.astral.sh/uv/) | Package management, venvs | `pyproject.toml` per package |
+| [ruff](https://docs.astral.sh/ruff/) | Linting + formatting | `ruff.toml` |
+| [ty](https://github.com/astral-sh/ty) | Type checking | `ty.toml` |
+| [moon](https://moonrepo.dev/) | Parallel task runner + caching | `.moon/workspace.yml`, `moon.yml` per package |
+| [Tailwind CSS](https://tailwindcss.com/) | Utility-first CSS (standalone CLI) | `input.css` (v4 syntax) |
+| [MkDocs](https://www.mkdocs.org/) | Documentation | `mkdocs.yml` |
+| [pre-commit](https://pre-commit.com/) | Git hooks (lint + format + typecheck) | `.pre-commit-config.yaml` |
+| [GitHub Actions](https://github.com/features/actions) | CI (lint + typecheck + test) | `.github/workflows/tests.yml` |
