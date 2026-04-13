@@ -16,21 +16,26 @@ Browser ──(HTML + HTMX)──> Frontend (port 3000)
                                  │
                            data/matches.duckdb
                                  ▲
-                                 │
-                          wels-ingest CLI
-                          (CV pipeline)
-                                 │
-                           Match video (MP4)
+                          ┌──────┴───────┐
+                   wels-ingest        wels-score
+                  (CV pipeline)    (batch scoring)
+                          │              │
+                   Match video    trained *.pt
+                     (MP4)        checkpoint
 ```
 
 **Package boundaries** — packages communicate through DuckDB (data) and HTTP (services), never by importing each other:
 
 | Package | Reads | Writes |
 |---------|-------|--------|
-| `ingestion` | video file | `data/matches.duckdb` |
-| `ml` | `data/matches.duckdb` (read-only) | `data/models/*.pt` |
-| `backend` | `data/matches.duckdb`, `data/models/*.pt` | HTTP responses |
+| `ingestion` | video file | `data/matches.duckdb` (matches, frames, players, ball) |
+| `ml` | `data/matches.duckdb` | `data/matches.duckdb` (action_predictions, formations, possession_phases) + `data/models/*.pt` |
+| `backend` | `data/matches.duckdb` | HTTP responses |
 | `frontend` | backend HTTP | HTML responses |
+
+**Two-step data pipeline:**
+1. `wels-ingest <video> <match_id>` — CV pipeline writes raw tracking data
+2. `wels-score <match_id>` — ML scoring job reads tracking data and writes pre-computed predictions
 
 ## Repository Layout
 
@@ -59,12 +64,16 @@ wels-monorepo/
 │   │       ├── orchestrator.py
 │   │       ├── config.py
 │   │       └── cli.py        # wels-ingest entry point
-│   └── ml/               # GCN + LSTM action predictor
+│   └── ml/               # GCN + LSTM action predictor + batch scoring
 │       └── src/ml/
 │           ├── data/         # DuckDB queries, graph construction, Dataset
 │           ├── models/       # ActionPredictor (GCN + LSTM)
 │           ├── training/     # training loop + evaluation
+│           ├── analysis/     # formation classifier, possession phase detector
+│           ├── storage/      # ML output tables schema (action_predictions, etc.)
+│           ├── scoring.py    # MatchScorer: writes all 3 output tables
 │           ├── inference.py  # load checkpoint → predict
+│           ├── cli.py        # wels-score entry point
 │           └── config.py
 ├── data/                 # runtime data — not committed
 │   ├── matches.duckdb    # all match data
@@ -129,6 +138,11 @@ uv run wels-ingest <video> <match_id> [--calibration court.json]
 cd packages/ml
 uv run wels-train
 
+# Batch scoring (writes pre-computed predictions to DuckDB)
+cd packages/ml
+uv run wels-score <match_id>
+uv run wels-score <match_id> --checkpoint data/models/action_predictor_best.pt
+
 # Moon (parallel + cached)
 ./tools/moon run :lint
 ./tools/moon run :typecheck
@@ -156,11 +170,15 @@ uv run wels-train
 - `torch` and `ultralytics` are in the `[cv]` optional group — install with `uv sync --all-extras` on GPU machines.
 
 ### Working on the ML package
-- `ml` reads DuckDB **read-only** — it never writes to the database.
-- `data/features.py` contains all DuckDB queries; keep SQL out of other modules.
+- The ml package has **two modes**: training (reads DuckDB, writes checkpoint) and scoring (reads DuckDB, writes DuckDB).
+- `data/features.py` contains all DuckDB read queries; keep SQL out of other modules.
 - `data/graphs.py` converts frame dicts to PyG `Data` objects — no I/O.
 - `models/action.py` is a plain `nn.Module` — no DuckDB, no file I/O.
+- `scoring.py` / `MatchScorer` is the only place that writes to DuckDB (3 tables: `action_predictions`, `formations`, `possession_phases`).
+- `analysis/formation.py` and `analysis/possession.py` are pure functions — no DB, no GPU. Test them without any setup.
+- `storage/schema.py` defines the ML output tables. `connect()` requires the DB to already exist (run `wels-ingest` first).
 - Use `WELS_DEVICE=cpu` on machines without a GPU.
+- After training a new checkpoint, run `wels-score` to refresh pre-computed predictions in DuckDB.
 
 ### Adding a dependency
 ```bash
@@ -206,11 +224,11 @@ Custom skills are defined under `.claude/commands/` and invocable as slash comma
 | `/add-dep <dep> to <pkg>` | Add a dependency via uv |
 | `/check` | Run the full quality suite (lint + typecheck + test) |
 | `/port-pipeline <module>` | Port a pipeline stub from CV-POC into the ingestion package |
-| `/train` | Run wels-train and report results |
+| `/train` | Run wels-train and report results, then prompt to run wels-score |
 
 ## Key Design Decisions
 
-- **Package boundaries via DuckDB + HTTP**: packages never import each other. `ingestion` writes DuckDB, `ml` reads it, `backend` serves it.
+- **Package boundaries via DuckDB + HTTP**: packages never import each other. `ingestion` writes raw tracking data to DuckDB; `ml` reads that data and writes pre-computed predictions back; `backend` serves all tables via HTTP. No on-the-fly inference at request time.
 - **Pipeline modules are pure**: `pipeline/` functions take typed inputs, return typed outputs — no side effects. This makes them testable without a GPU.
 - **torch/ultralytics are optional in ingestion**: unit tests run without GPU deps; the `[cv]` group is only installed on machines that process video.
 - **Ingestion triggered as FastAPI BackgroundTask**: no separate worker queue. Sufficient for batch processing; can be extracted later if needed.

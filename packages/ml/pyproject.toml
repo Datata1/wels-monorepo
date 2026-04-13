@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 wels-train = "ml.training.train:main"
+wels-score = "ml.cli:main"
 
 [build-system]
 requires = ["hatchling"]
