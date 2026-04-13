@@ -46,8 +46,10 @@ plugins:
           paths:
             - packages/backend/src
             - packages/frontend/src
+            - packages/ingestion/src
+            - packages/ml/src
           options:
-            show_source: true
+            show_source: false
             show_root_heading: true
             heading_level: 3
 
@@ -55,6 +57,14 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Architecture: architecture.md
+  - Ingestion:
+      - Overview: ingestion/overview.md
+      - Running: ingestion/running.md
+      - Pipeline internals: ingestion/pipeline.md
+  - Storage: storage.md
+  - ML:
+      - Overview: ml/overview.md
+      - Training: ml/training.md
   - Backend:
       - Overview: backend/overview.md
       - API Reference: backend/api.md

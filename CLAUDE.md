@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**WELS** is a handball analytics platform for trainers and analysts. It ingests video data, runs ML inference, and surfaces match insights via a web dashboard. The platform is early-stage: the backend API and frontend shell are implemented; the ingestion and ML packages are scaffolded but empty.
+**WELS** is a handball analytics platform for trainers and analysts. It ingests match videos through a computer vision pipeline, stores structured frame-by-frame data in DuckDB, trains a GCN + LSTM model to predict player actions, and surfaces insights via a web dashboard.
 
 ## Architecture
 
@@ -14,46 +14,70 @@ Browser ──(HTML + HTMX)──> Frontend (port 3000)
                                  ▼
                            Backend API (port 8000)
                                  │
-                           SQLite (local dev)
-                           PostgreSQL (production)
+                           data/matches.duckdb
+                                 ▲
+                                 │
+                          wels-ingest CLI
+                          (CV pipeline)
+                                 │
+                           Match video (MP4)
 ```
 
-- **Frontend** is a FastAPI app that serves Jinja2 HTML. It talks to the backend over HTTP and returns either full pages or HTMX partial fragments.
-- **Backend** is a FastAPI JSON API at `/api/v1/`. Data models are Pydantic v2. No ORM or migrations exist yet — only a `database_url` config placeholder.
-- **Ingestion** and **ML** packages are placeholders (`.gitkeep` only).
+**Package boundaries** — packages communicate through DuckDB (data) and HTTP (services), never by importing each other:
+
+| Package | Reads | Writes |
+|---------|-------|--------|
+| `ingestion` | video file | `data/matches.duckdb` |
+| `ml` | `data/matches.duckdb` (read-only) | `data/models/*.pt` |
+| `backend` | `data/matches.duckdb`, `data/models/*.pt` | HTTP responses |
+| `frontend` | backend HTTP | HTML responses |
 
 ## Repository Layout
 
 ```
 wels-monorepo/
 ├── packages/
-│   ├── backend/          # FastAPI REST API
-│   │   ├── src/backend/
-│   │   │   ├── app.py        # FastAPI app factory
-│   │   │   ├── config.py     # pydantic-settings config (WELS_ prefix)
-│   │   │   ├── models.py     # Pydantic data models (mostly empty)
-│   │   │   └── routes/       # API route modules (add new routes here)
-│   │   └── tests/
-│   ├── frontend/         # HTMX + Jinja2 HTML server
-│   │   ├── src/frontend/
-│   │   │   ├── app.py        # FastAPI app factory
-│   │   │   ├── config.py     # pydantic-settings config (WELS_ prefix)
-│   │   │   ├── routes/       # Page + partial routes (add new routes here)
-│   │   │   ├── static/css/   # Hand-authored CSS with design tokens
-│   │   │   └── templates/
-│   │   │       ├── base.html          # Layout shell
-│   │   │       ├── index.html         # Homepage
-│   │   │       └── components/macros.html  # Jinja2 macro components
-│   │   └── tests/
-│   ├── ingestion/        # (placeholder)
-│   └── ml/               # (placeholder)
-├── docs/                 # MkDocs documentation source
+│   ├── backend/          # FastAPI REST API (port 8000)
+│   │   └── src/backend/
+│   │       ├── app.py        # FastAPI app factory
+│   │       ├── config.py     # pydantic-settings (WELS_ prefix)
+│   │       ├── models.py     # Pydantic domain models
+│   │       └── routes/       # API route modules
+│   ├── frontend/         # HTMX + Jinja2 server (port 3000)
+│   │   └── src/frontend/
+│   │       ├── app.py
+│   │       ├── routes/
+│   │       ├── static/css/
+│   │       └── templates/
+│   │           ├── base.html
+│   │           └── components/macros.html
+│   ├── ingestion/        # CV pipeline: video → DuckDB
+│   │   └── src/ingestion/
+│   │       ├── pipeline/     # detection, pose, team, court (pure functions)
+│   │       ├── storage/      # DuckDB schema + FrameWriter
+│   │       ├── types.py      # shared dataclasses (BoundingBox, FrameState, …)
+│   │       ├── orchestrator.py
+│   │       ├── config.py
+│   │       └── cli.py        # wels-ingest entry point
+│   └── ml/               # GCN + LSTM action predictor
+│       └── src/ml/
+│           ├── data/         # DuckDB queries, graph construction, Dataset
+│           ├── models/       # ActionPredictor (GCN + LSTM)
+│           ├── training/     # training loop + evaluation
+│           ├── inference.py  # load checkpoint → predict
+│           └── config.py
+├── data/                 # runtime data — not committed
+│   ├── matches.duckdb    # all match data
+│   ├── models/           # YOLO weights + trained checkpoints
+│   └── videos/           # recommended location for match recordings
+├── docs/                 # MkDocs documentation
 ├── .moon/                # Moon workspace config
-├── .github/workflows/    # CI (lint + typecheck + test on PR)
-├── Makefile              # Top-level developer commands
+├── .github/
+│   ├── workflows/tests.yml      # CI: lint + typecheck + test (all 4 packages)
+│   └── instructions/python.instructions.md
+├── Makefile
 ├── ruff.toml             # Shared lint/format config
-├── ty.toml               # Shared type-check config (all rules as errors)
-└── .pre-commit-config.yaml
+└── ty.toml               # Shared type-check config (all rules as errors)
 ```
 
 ## Tech Stack
@@ -61,17 +85,19 @@ wels-monorepo/
 | Layer | Tool |
 |-------|------|
 | Language | Python 3.12+ |
-| API framework | FastAPI + Uvicorn (both packages) |
-| Templating | Jinja2 |
-| Frontend interaction | HTMX (no JS build step) |
+| API framework | FastAPI + Uvicorn |
+| Templating | Jinja2 + HTMX |
 | Data models | Pydantic v2 |
-| Config | pydantic-settings (env vars with `WELS_` prefix) |
+| Config | pydantic-settings (`WELS_` prefix) |
 | HTTP client | httpx (async) |
+| Storage | **DuckDB** (`data/matches.duckdb`) |
+| Object detection | **YOLO11** (ultralytics) + ByteTrack |
+| ML framework | **PyTorch** + **PyTorch Geometric** |
 | Package manager | **uv** (not pip, not Poetry) |
 | Build backend | hatchling |
-| Task runner | **moon** (binary at `./tools/moon`) |
-| Linter/formatter | **ruff** (replaces black + flake8 + isort) |
-| Type checker | **ty** (Astral's checker, all rules as errors) |
+| Task runner | **moon** (`./tools/moon`) |
+| Linter/formatter | **ruff** |
+| Type checker | **ty** (all rules as errors) |
 | Test framework | pytest + pytest-asyncio |
 | Docs | MkDocs Material |
 | CI | GitHub Actions |
@@ -80,23 +106,30 @@ wels-monorepo/
 
 ```bash
 # First-time setup
-make setup          # install all venvs, pre-commit hooks
+make setup          # install all venvs + pre-commit hooks
 
 # Development
-make dev            # start backend + frontend + docs (parallel)
-make run-backend    # backend only  → http://localhost:8000
-make run-frontend   # frontend only → http://localhost:3000
-make docs           # docs server   → http://localhost:8080
+make dev            # backend + frontend + docs (parallel)
+make run-backend    # → http://localhost:8000
+make run-frontend   # → http://localhost:3000
+make docs           # → http://localhost:8080
 
-# Code quality
-make lint           # ruff check (all packages)
-make format         # ruff format (all packages)
-make typecheck      # ty (all packages)
-make test           # pytest (all packages)
-make test-integration  # integration tests only
-make test-ui           # UI/HTML tests only (frontend)
+# Code quality (all packages)
+make lint
+make format
+make typecheck
+make test
+make test-integration
 
-# Moon-based (parallel + cached)
+# Video ingestion (requires GPU or --device cpu)
+cd packages/ingestion
+uv run wels-ingest <video> <match_id> [--calibration court.json]
+
+# ML training
+cd packages/ml
+uv run wels-train
+
+# Moon (parallel + cached)
 ./tools/moon run :lint
 ./tools/moon run :typecheck
 ./tools/moon run :test
@@ -106,53 +139,64 @@ make test-ui           # UI/HTML tests only (frontend)
 
 ### Adding a new backend route
 1. Create a module in `packages/backend/src/backend/routes/`.
-2. Define an `APIRouter` and add it to the app in `app.py`.
-3. Use Pydantic v2 models for request/response bodies; define them in `models.py` or a local `schemas.py`.
+2. Define an `APIRouter` and register it in `app.py`.
+3. Use Pydantic v2 models in `models.py` or a local `schemas.py`.
 
 ### Adding a new frontend page
 1. Create a module in `packages/frontend/src/frontend/routes/`.
 2. Register the router in `app.py`.
 3. Add a Jinja2 template under `templates/`.
-4. For HTMX partials return an HTML fragment (not a full page) — use `TemplateResponse` with a partial template.
-5. Use macros from `templates/components/macros.html` for reusable UI pieces.
+4. For HTMX partials, return an HTML fragment via `TemplateResponse`.
+5. Use macros from `templates/components/macros.html`.
+
+### Working on the ingestion pipeline
+- `pipeline/` modules are **pure functions** — no file I/O, no DB calls, no global state inside them.
+- All data passed between stages uses the typed dataclasses in `types.py`.
+- The four pipeline stubs (`detection`, `pose`, `team`, `court`) have `NotImplementedError` bodies; port them from `CV-POC-Wels/pipeline/` one at a time.
+- `torch` and `ultralytics` are in the `[cv]` optional group — install with `uv sync --all-extras` on GPU machines.
+
+### Working on the ML package
+- `ml` reads DuckDB **read-only** — it never writes to the database.
+- `data/features.py` contains all DuckDB queries; keep SQL out of other modules.
+- `data/graphs.py` converts frame dicts to PyG `Data` objects — no I/O.
+- `models/action.py` is a plain `nn.Module` — no DuckDB, no file I/O.
+- Use `WELS_DEVICE=cpu` on machines without a GPU.
 
 ### Adding a dependency
-Use `uv add` inside the relevant package directory (not `pip install`):
 ```bash
-cd packages/backend && uv add some-library
+cd packages/<name> && uv add <package>
 ```
-Or use the `add-dep` skill: `/add-dep <package> to <backend|frontend>`.
-
-### Code style
-- Line length: 100 characters (configured in `ruff.toml`).
-- All imports sorted and grouped by ruff.
-- All type hints required — `ty` runs with every rule as an error.
-- Pre-commit hooks enforce lint + format + typecheck on every commit.
+For ingestion CV deps (torch, ultralytics): `uv add --optional cv <package>`
+Or use the `/add-dep` skill.
 
 ### Configuration
-Both packages use `pydantic-settings`. Environment variables are prefixed with `WELS_`:
+All packages use `pydantic-settings` with `WELS_` prefix:
 ```bash
-export WELS_DATABASE_URL="postgresql://..."
-export WELS_BACKEND_URL="http://localhost:8000"  # used by frontend
+export WELS_DEVICE=cuda
+export WELS_DUCKDB_PATH=data/matches.duckdb
+export WELS_BACKEND_URL=http://localhost:8000   # used by frontend
 ```
 
 ### Testing
-- Async tests use `@pytest.mark.asyncio`.
-- Integration tests are marked `@pytest.mark.integration`.
-- UI tests parse rendered HTML with BeautifulSoup4.
-- Each package has its own pytest config in `pyproject.toml`.
+- Non-integration tests require no GPU and no video files — run anywhere.
+- Integration tests are marked `@pytest.mark.integration` and excluded from CI.
+- Ingestion unit tests (types, storage) only need `duckdb` + `numpy`; no torch.
+- ML unit tests (graph construction, model shape) need torch but no GPU.
 
 ## CI
 
-GitHub Actions runs on every PR:
+GitHub Actions runs on every PR across all four packages:
 1. Lint (ruff)
 2. Type check (ty, GitHub annotation format)
-3. Test (pytest, JUnit XML)
-4. Posts a summary comment on the PR with pass/fail status.
+3. Test (`pytest -m "not integration"`)
+4. Posts a pass/fail summary comment on the PR
+
+Ingestion installs without the `[cv]` extras (no torch/ultralytics on CI).
+ML installs normally; torch runs on CPU on the GitHub runner and is cached between runs.
 
 ## Available Claude Skills
 
-Custom skills are defined under `.claude/skills/` and invocable as slash commands:
+Custom skills are defined under `.claude/commands/` and invocable as slash commands:
 
 | Skill | Purpose |
 |-------|---------|
@@ -161,11 +205,17 @@ Custom skills are defined under `.claude/skills/` and invocable as slash command
 | `/new-route <desc>` | Scaffold a new route (backend or frontend) |
 | `/add-dep <dep> to <pkg>` | Add a dependency via uv |
 | `/check` | Run the full quality suite (lint + typecheck + test) |
+| `/port-pipeline <module>` | Port a pipeline stub from CV-POC into the ingestion package |
+| `/train` | Run wels-train and report results |
 
 ## Key Design Decisions
 
-- **Two separate FastAPI apps** (not one): frontend and backend have independent venvs, ports, and can be scaled separately. The frontend is a "thin BFF" (Backend for Frontend) that calls the real API.
-- **HTMX, not React/Vue**: no JavaScript build toolchain. Dynamic UI is achieved via server-sent HTML fragments.
-- **uv over pip/Poetry**: faster installs, deterministic lockfiles, first-class workspace support.
-- **moon for task caching**: tasks are only re-run when their inputs change (content-hashed). Speeds up CI significantly on unchanged packages.
-- **ruff + ty, not black/mypy**: both are written in Rust; they're an order of magnitude faster and maintained by the same team (Astral).
+- **Package boundaries via DuckDB + HTTP**: packages never import each other. `ingestion` writes DuckDB, `ml` reads it, `backend` serves it.
+- **Pipeline modules are pure**: `pipeline/` functions take typed inputs, return typed outputs — no side effects. This makes them testable without a GPU.
+- **torch/ultralytics are optional in ingestion**: unit tests run without GPU deps; the `[cv]` group is only installed on machines that process video.
+- **Ingestion triggered as FastAPI BackgroundTask**: no separate worker queue. Sufficient for batch processing; can be extracted later if needed.
+- **Two separate FastAPI apps**: frontend and backend have independent venvs and ports.
+- **HTMX, not React/Vue**: no JavaScript build toolchain.
+- **uv over pip/Poetry**: faster installs, deterministic lockfiles.
+- **moon for task caching**: tasks only re-run when inputs change.
+- **ruff + ty, not black/mypy**: both written in Rust; order-of-magnitude faster.

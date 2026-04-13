@@ -1,107 +1,127 @@
 # WELS — Handball Analytics Platform
 
-A monorepo for a handball analytics platform that helps trainers analyze matches, ingest video data, perform computer vision, and predict actions to adjust strategy.
+A monorepo for a handball analytics platform. It processes match video with computer vision, stores structured match data in DuckDB, and predicts player actions with a GCN + LSTM model — surfacing insights via a web dashboard.
 
-## Repository Structure
+## How it works
+
+```
+match.mp4  →  [wels-ingest]  →  data/matches.duckdb  →  Backend API  →  Frontend
+                                        ↑
+                               [wels-train]  ←  action labels
+                                        ↓
+                               data/models/action_best.pt
+```
+
+1. **Ingest** — run `wels-ingest` on a match video; the CV pipeline detects players, estimates poses, classifies teams, and maps positions to court coordinates
+2. **Analyse** — the backend reads DuckDB and serves heatmaps, possession stats, and speed comparisons via a REST API
+3. **Train** — annotate action labels in DuckDB, then run `wels-train` to train the GCN + LSTM action predictor
+4. **Predict** — the backend calls the trained model at request time and returns action probabilities per player per frame
+
+## Repository structure
 
 ```
 wels-monorepo/
 ├── packages/
-│   ├── backend/    # FastAPI API server (port 8000)
-│   └── frontend/   # HTMX + Jinja2 frontend served by FastAPI (port 3000)
-├── docs/           # MkDocs documentation source
-├── .moon/          # moon workspace config
-├── Makefile        # Top-level commands for managing all packages
-├── mkdocs.yml      # Documentation site config
-├── ruff.toml       # Shared linting/formatting config
-└── ty.toml         # Shared type checking config
+│   ├── backend/        # FastAPI REST API (port 8000)
+│   ├── frontend/       # HTMX + Jinja2 web UI (port 3000)
+│   ├── ingestion/      # CV pipeline: video → DuckDB
+│   └── ml/             # GCN + LSTM model: DuckDB → action predictions
+├── data/               # Runtime data — not committed
+│   ├── matches.duckdb  # All match data
+│   ├── models/         # YOLO weights + trained checkpoints
+│   └── videos/         # Recommended location for match recordings
+├── docs/               # MkDocs documentation
+├── .moon/              # Moon workspace config
+├── Makefile
+├── ruff.toml           # Shared lint/format config
+└── ty.toml             # Shared type-check config
 ```
-
-Each Python package under `packages/` has its **own virtual environment** managed by [uv](https://docs.astral.sh/uv/).
 
 ## Prerequisites
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+| Requirement | Notes |
+|-------------|-------|
+| Python 3.12+ | |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| NVIDIA GPU (CUDA 12.1+) | Required for video ingestion and ML training. CPU fallback available but slow. |
 
-All other tools (ruff, ty, moon) are installed automatically via `make setup`.
+## Quick start
 
-## Quick Start
-On Linux/Mac
+**Linux / macOS**
 ```bash
-# Set up everything (venvs, deps, moon, pre-commit hooks)
-make setup
-
-# Start the full platform (backend + frontend + docs)
-make dev
+make setup   # venvs, deps, moon, pre-commit hooks
+make dev     # backend + frontend + docs in parallel
 ```
 
-On Windows
+**Windows**
 ```powershell
 .\Make.ps1 setup
-
 .\Make.ps1 dev
 ```
 
-This launches:
+| Service | URL |
+|---------|-----|
+| Backend API | http://localhost:8000 |
+| Frontend | http://localhost:3000 |
+| Docs | http://localhost:8080 |
 
-| Service  | URL                        |
-|----------|----------------------------|
-| Backend  | http://localhost:8000       |
-| Frontend | http://localhost:3000       |
-| Docs     | http://localhost:8080       |
+## Processing a match video
 
-Press `Ctrl+C` to stop all services.
+```bash
+cd packages/ingestion
+
+# Basic run
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz
+
+# With court calibration (enables real-world metre coordinates)
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz \
+    --calibration data/court_cal.json
+
+# CPU-only machine
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz --device cpu
+```
+
+Install the CV runtime deps on the machine that processes video:
+```bash
+cd packages/ingestion && uv sync --all-extras
+```
+
+## Training the action predictor
+
+```bash
+cd packages/ml
+uv sync
+uv run wels-train   # reads data/matches.duckdb, writes data/models/action_best.pt
+```
+
+See [ML — Training](docs/ml/training.md) for the full annotation and training workflow.
 
 ## Commands
 
-### Development
-
 ```bash
-make dev              # Start all services in parallel
-make run-backend      # Backend only
-make run-frontend     # Frontend only
-make docs             # Documentation site only
+make lint             # ruff check (all packages)
+make format           # ruff format (all packages)
+make typecheck        # ty (all packages)
+make test             # pytest — non-integration tests (all packages)
+make test-integration # integration tests (require GPU + video files)
+make docs             # docs server at http://localhost:8080
 ```
 
-### Code Quality
-
+Moon (parallel + cached):
 ```bash
-make lint             # Lint all packages (ruff)
-make format           # Auto-format all packages (ruff)
-make typecheck        # Type check all packages (ty)
-make test             # Run all tests (pytest)
-make test-integration # Integration tests only
-make test-ui          # UI tests only (frontend)
+./tools/moon run :lint
+./tools/moon run :test
+./tools/moon run :typecheck
 ```
 
-### moon (parallel + cached)
-
-[moon](https://moonrepo.dev/) is used for parallel task execution with content-aware caching:
+## Adding dependencies
 
 ```bash
-./tools/moon run :lint       # Lint all packages in parallel
-./tools/moon run :test       # Test all packages in parallel
-./tools/moon run :typecheck  # Type check all packages in parallel
-```
+cd packages/<name> && uv add <package>        # runtime dep
+cd packages/<name> && uv add --dev <package>  # dev dep
 
-### Documentation
-
-```bash
-make docs             # Live-reload server at http://localhost:8080
-make docs-build       # Build static site to site/
-```
-
-## Package Management
-
-Each package is an independent Python project with its own `pyproject.toml` and `.venv`.
-
-```bash
-# Add a dependency to the backend
-cd packages/backend && uv add <package>
-
-# Add a dev dependency to the frontend
-cd packages/frontend && uv add --dev <package>
+# Ingestion CV deps (torch, ultralytics) are in the [cv] optional group:
+cd packages/ingestion && uv add --optional cv <package>
 ```
 
 ## Tooling
@@ -111,7 +131,7 @@ cd packages/frontend && uv add --dev <package>
 | [uv](https://docs.astral.sh/uv/) | Package management, venvs | `pyproject.toml` per package |
 | [ruff](https://docs.astral.sh/ruff/) | Linting + formatting | `ruff.toml` |
 | [ty](https://github.com/astral-sh/ty) | Type checking | `ty.toml` |
-| [moon](https://moonrepo.dev/) | Parallel task runner + caching | `.moon/workspace.yml`, `moon.yml` per package |
-| [MkDocs](https://www.mkdocs.org/) | Documentation | `mkdocs.yml` |
-| [pre-commit](https://pre-commit.com/) | Git hooks (lint + format + typecheck) | `.pre-commit-config.yaml` |
-| [GitHub Actions](https://github.com/features/actions) | CI (lint + typecheck + test) | `.github/workflows/tests.yml` |
+| [moon](https://moonrepo.dev/) | Parallel task runner + caching | `.moon/`, `moon.yml` per package |
+| [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) | Documentation | `mkdocs.yml` |
+| [pre-commit](https://pre-commit.com/) | Git hooks | `.pre-commit-config.yaml` |
+| [GitHub Actions](https://github.com/features/actions) | CI | `.github/workflows/tests.yml` |

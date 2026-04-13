@@ -8,17 +8,23 @@ A monorepo for a handball analytics platform that helps trainers analyze matches
 |---|---|
 | [Getting Started](getting-started.md) | Set up your local environment |
 | [Architecture](architecture.md) | System overview and design decisions |
-| [Backend API](backend/api.md) | FastAPI endpoints and models |
-| [Frontend](frontend/overview.md) | HTMX templates and components |
+| [Ingestion — Running](ingestion/running.md) | Process a match video end-to-end |
+| [Storage](storage.md) | DuckDB schema and common queries |
+| [ML — Training](ml/training.md) | Annotate and train the action predictor |
 | [Contributing](contributing.md) | Code style, testing, and PR workflow |
 
 ## Tech Stack
 
-- **Python 3.12+** with [uv](https://docs.astral.sh/uv/) for package management
-- **FastAPI** — backend API and frontend server
-- **HTMX** + **Jinja2** — server-rendered frontend with dynamic partial updates
-- **Semantic CSS** — hand-authored with CSS custom properties (design tokens)
-- **Pydantic v2** — data models and settings
-- **ruff** — linting and formatting
-- **ty** — type checking
-- **pytest** — testing with integration and UI test markers
+| Layer | Technology |
+|-------|-----------|
+| Language | Python 3.12+ |
+| Web framework | FastAPI + Uvicorn |
+| Templating | Jinja2 + HTMX |
+| Data models | Pydantic v2 |
+| Package manager | uv |
+| Object detection | YOLO11 (ultralytics) + ByteTrack |
+| ML framework | PyTorch + PyTorch Geometric |
+| Storage | DuckDB |
+| Linter / formatter | ruff |
+| Type checker | ty |
+| Task runner | moon |

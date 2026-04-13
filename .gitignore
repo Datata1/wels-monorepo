@@ -44,6 +44,10 @@ htmlcov/
 # MkDocs build output
 site/
 
+# Data directory (large files, not committed)
+data/*.duckdb
+data/models/
+
 # other
 .stfolder
 .stignore

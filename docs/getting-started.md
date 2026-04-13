@@ -2,66 +2,98 @@
 
 ## Prerequisites
 
-- **Python 3.12+**
-- **[uv](https://docs.astral.sh/uv/)** — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+| Requirement | Notes |
+|-------------|-------|
+| Python 3.12+ | |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| NVIDIA GPU | For ingestion and ML training. CUDA 12.1+. CPU fallback available but slow. |
 
 ## Setup
 
-Clone the repo and run the setup command:
+Clone the repo and install everything:
 
 ```bash
 git clone <repo-url> && cd wels-monorepo
 make setup
 ```
 
-This will:
+This installs venvs and dependencies for `backend`, `frontend`, `ingestion`, and `ml`,
+downloads the moon task runner, and installs pre-commit hooks.
 
-1. Create virtual environments for both `packages/backend` and `packages/frontend`
-2. Install all dependencies (including dev extras)
-3. Download the moon task runner binary
-4. Install pre-commit hooks
+To set up an individual package only:
 
-## Running Locally
+```bash
+cd packages/ingestion && uv sync
+cd packages/ml && uv sync
+```
 
-Start the entire platform with a single command:
+## Running the web platform
 
 ```bash
 make dev
 ```
 
-This launches:
-
 | Service | URL |
 |---------|-----|
 | Backend API | [http://localhost:8000](http://localhost:8000) |
 | Frontend | [http://localhost:3000](http://localhost:3000) |
+| Docs | [http://localhost:8080](http://localhost:8080) |
 
 Press `Ctrl+C` to stop all services.
 
-To run services individually:
+## Processing a match video
 
 ```bash
-make run-backend    # Backend only
-make run-frontend   # Frontend only
+cd packages/ingestion
+
+# Basic run (no court calibration — pixel positions only)
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz
+
+# With court calibration (enables real-world metres, required for ML)
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz \
+    --calibration data/court_cal.json
+
+# On a CPU-only machine
+uv run wels-ingest data/videos/match.mp4 2026-04-13_wels_vs_linz --device cpu
 ```
 
-## Common Commands
+Results are written to `data/matches.duckdb`. See [Ingestion — Running](ingestion/running.md)
+for the full CLI reference and [Storage](storage.md) for what gets stored.
+
+## Training the ML model
+
+Once you have ingested matches and added action labels to DuckDB:
 
 ```bash
-make lint           # Lint both packages with ruff
-make format         # Auto-format both packages
-make typecheck      # Type check both packages with ty
-make test           # Run all tests
-make test-integration  # Integration tests only
-make test-ui        # UI tests only (frontend)
-make docs           # Serve documentation locally
+cd packages/ml
+uv run wels-train
 ```
 
-## Adding Dependencies
+See [ML — Training](ml/training.md) for the full workflow including annotation.
 
-Each package has its own virtual environment:
+## Common commands
 
 ```bash
-cd packages/backend && uv add <package>
-cd packages/frontend && uv add --dev <package>
+make lint           # ruff check (all packages)
+make format         # ruff format (all packages)
+make typecheck      # ty check (all packages)
+make test           # pytest (all packages, non-integration)
 ```
+
+Or run per-package with moon:
+
+```bash
+./tools/moon run ingestion:test
+./tools/moon run ml:lint
+```
+
+## Adding dependencies
+
+Use `uv add` inside the relevant package directory:
+
+```bash
+cd packages/backend  && uv add some-library
+cd packages/ingestion && uv add --dev some-dev-tool
+```
+
+Or use the `/add-dep` skill.
