@@ -27,13 +27,20 @@ Each Python package under `packages/` has its **own virtual environment** manage
 All other tools (ruff, ty, moon) are installed automatically via `make setup`.
 
 ## Quick Start
-
+On Linux/Mac
 ```bash
 # Set up everything (venvs, deps, moon, pre-commit hooks)
 make setup
 
 # Start the full platform (backend + frontend + docs)
 make dev
+```
+
+On Windows
+```powershell
+.\Make.ps1 setup
+
+.\Make.ps1 dev
 ```
 
 This launches:
