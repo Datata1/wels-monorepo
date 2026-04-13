@@ -12,10 +12,12 @@ Browser ──(HTML + HTMX)──▶ Frontend (port 3000)
                                 │
                           data/matches.duckdb
                                 ▲
-                                │
-                         wels-ingest CLI
-                                │
-                          Match video (MP4)
+                         ┌──────┴───────┐
+                  wels-ingest        wels-score
+                 (CV pipeline)    (batch scoring)
+                         │              │
+                  Match video    trained *.pt
+                    (MP4)        checkpoint
 ```
 
 ## Full data flow
@@ -58,9 +60,29 @@ Browser ──(HTML + HTMX)──▶ Frontend (port 3000)
            │  │                     │
            │  │  GCN + LSTM model   │
            │  └──────────┬──────────┘
-           │             │  data/models/action_best.pt
-           │             │
+           │             │  data/models/action_predictor_best.pt
+           │             ▼
+           │  ┌─────────────────────────────────┐
+           │  │  wels-score <match_id>           │
+           │  │  (packages/ml)                   │
+           │  │                                  │
+           │  │  1. Action predictions           │
+           │  │     (GCN + LSTM per ball carrier)│
+           │  │  2. Formation labels             │
+           │  │     (rule-based, every 5 frames) │
+           │  │  3. Possession phases            │
+           │  │     (smoothed from has_ball)     │
+           │  └──────────┬──────────────────────┘
+           │             │  writes back to DuckDB
            ▼             ▼
+┌────────────────────────────────────────┐
+│  data/matches.duckdb (complete)        │
+│  + action_predictions                  │
+│  + formations                          │
+│  + possession_phases                   │
+└──────────────────┬─────────────────────┘
+                   │
+                   ▼
 ┌──────────────────────────────────┐
 │  Backend API (port 8000)         │
 │  (packages/backend)              │
@@ -104,12 +126,16 @@ wels-monorepo/
 │   │       ├── storage/      # DuckDB schema + writer
 │   │       ├── orchestrator.py
 │   │       └── cli.py
-│   └── ml/               # GCN + LSTM model: DuckDB → predictions
+│   └── ml/               # GCN + LSTM model: train, score, analyse
 │       └── src/ml/
 │           ├── data/         # feature queries, graph construction, dataset
 │           ├── models/       # ActionPredictor (GCN + LSTM)
 │           ├── training/     # training loop + evaluation
-│           └── inference.py
+│           ├── analysis/     # formation classifier, possession phase detector
+│           ├── storage/      # ML output table schema
+│           ├── scoring.py    # MatchScorer (writes 3 output tables)
+│           ├── inference.py  # ActionInference (loads checkpoint)
+│           └── cli.py        # wels-score entry point
 ├── data/                 # runtime data (not committed)
 │   ├── matches.duckdb
 │   ├── models/
@@ -127,12 +153,15 @@ They never import each other.
 
 | Package | Reads from | Writes to |
 |---------|-----------|-----------|
-| `ingestion` | video file | `data/matches.duckdb` |
-| `ml` | `data/matches.duckdb` (read-only) | `data/models/*.pt` |
-| `backend` | `data/matches.duckdb`, `data/models/*.pt` | HTTP responses |
+| `ingestion` | video file | `data/matches.duckdb` (matches, frames, players, ball) |
+| `ml` | `data/matches.duckdb` | `data/matches.duckdb` (action_predictions, formations, possession_phases) + `data/models/*.pt` |
+| `backend` | `data/matches.duckdb` | HTTP responses |
 | `frontend` | backend HTTP | HTML responses |
 
-This means each package can evolve, be replaced, or be scaled independently.
+The backend never calls the ML model directly — it only reads pre-computed results
+from DuckDB. This means a 60-minute match is served instantly without GPU at request time.
+
+Each package can evolve, be replaced, or be scaled independently.
 
 ## Design decisions
 

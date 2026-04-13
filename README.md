@@ -5,17 +5,21 @@ A monorepo for a handball analytics platform. It processes match video with comp
 ## How it works
 
 ```
-match.mp4  →  [wels-ingest]  →  data/matches.duckdb  →  Backend API  →  Frontend
-                                        ↑
-                               [wels-train]  ←  action labels
-                                        ↓
-                               data/models/action_best.pt
+match.mp4  →  [wels-ingest]  →  data/matches.duckdb  ──────────────────▶  Backend API  →  Frontend
+                                        ↑                                        ↑
+                               [wels-train]  ←  action labels                   │
+                                        ↓                                        │
+                               data/models/action_best.pt                        │
+                                        │                                        │
+                                        ▼                                        │
+                                [wels-score]  ─── formations, possession ────────┘
+                                              ─── action_predictions ────────────┘
 ```
 
 1. **Ingest** — run `wels-ingest` on a match video; the CV pipeline detects players, estimates poses, classifies teams, and maps positions to court coordinates
-2. **Analyse** — the backend reads DuckDB and serves heatmaps, possession stats, and speed comparisons via a REST API
-3. **Train** — annotate action labels in DuckDB, then run `wels-train` to train the GCN + LSTM action predictor
-4. **Predict** — the backend calls the trained model at request time and returns action probabilities per player per frame
+2. **Train** — annotate action labels in DuckDB, then run `wels-train` to produce a trained checkpoint
+3. **Score** — run `wels-score` to pre-compute action predictions, formation labels, and possession phases into DuckDB (one-time batch job per match)
+4. **Analyse** — the backend reads pre-computed results from DuckDB; no on-the-fly inference at request time
 
 ## Repository structure
 
@@ -25,7 +29,7 @@ wels-monorepo/
 │   ├── backend/        # FastAPI REST API (port 8000)
 │   ├── frontend/       # HTMX + Jinja2 web UI (port 3000)
 │   ├── ingestion/      # CV pipeline: video → DuckDB
-│   └── ml/             # GCN + LSTM model: DuckDB → action predictions
+│   └── ml/             # GCN + LSTM model: train, score, analyse
 ├── data/               # Runtime data — not committed
 │   ├── matches.duckdb  # All match data
 │   ├── models/         # YOLO weights + trained checkpoints
@@ -86,15 +90,24 @@ Install the CV runtime deps on the machine that processes video:
 cd packages/ingestion && uv sync --all-extras
 ```
 
-## Training the action predictor
+## Training and scoring
 
 ```bash
+# Train the model
 cd packages/ml
 uv sync
 uv run wels-train   # reads data/matches.duckdb, writes data/models/action_best.pt
+
+# Pre-compute predictions for a match (run after each new checkpoint)
+uv run wels-score 2026-04-13_wels_vs_linz
+uv run wels-score 2026-04-13_wels_vs_linz \
+    --checkpoint data/models/action_predictor_best.pt
 ```
 
-See [ML — Training](docs/ml/training.md) for the full annotation and training workflow.
+`wels-score` writes three tables to DuckDB: `action_predictions`, `formations`, and
+`possession_phases`. The backend reads from these — no inference at request time.
+
+See [ML — Training](docs/ml/training.md) for the full annotation, training, and scoring workflow.
 
 ## Commands
 
