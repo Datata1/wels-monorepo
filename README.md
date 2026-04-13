@@ -24,15 +24,15 @@ Each Python package under `packages/` has its **own virtual environment** manage
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
-All other tools (ruff, ty, Tailwind CSS, moon) are installed automatically via `make setup`.
+All other tools (ruff, ty, moon) are installed automatically via `make setup`.
 
 ## Quick Start
 
 ```bash
-# Set up everything (venvs, deps, Tailwind, moon, pre-commit hooks)
+# Set up everything (venvs, deps, moon, pre-commit hooks)
 make setup
 
-# Start the full platform (backend + frontend + Tailwind watcher + docs)
+# Start the full platform (backend + frontend + docs)
 make dev
 ```
 
@@ -78,13 +78,6 @@ make test-ui          # UI tests only (frontend)
 ./tools/moon run :typecheck  # Type check all packages in parallel
 ```
 
-### Tailwind CSS
-
-```bash
-make tailwind         # One-off build (minified)
-make tailwind-watch   # Watch mode
-```
-
 ### Documentation
 
 ```bash
@@ -112,7 +105,6 @@ cd packages/frontend && uv add --dev <package>
 | [ruff](https://docs.astral.sh/ruff/) | Linting + formatting | `ruff.toml` |
 | [ty](https://github.com/astral-sh/ty) | Type checking | `ty.toml` |
 | [moon](https://moonrepo.dev/) | Parallel task runner + caching | `.moon/workspace.yml`, `moon.yml` per package |
-| [Tailwind CSS](https://tailwindcss.com/) | Utility-first CSS (standalone CLI) | `input.css` (v4 syntax) |
 | [MkDocs](https://www.mkdocs.org/) | Documentation | `mkdocs.yml` |
 | [pre-commit](https://pre-commit.com/) | Git hooks (lint + format + typecheck) | `.pre-commit-config.yaml` |
 | [GitHub Actions](https://github.com/features/actions) | CI (lint + typecheck + test) | `.github/workflows/tests.yml` |

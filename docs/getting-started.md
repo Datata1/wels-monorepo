@@ -18,7 +18,7 @@ This will:
 
 1. Create virtual environments for both `packages/backend` and `packages/frontend`
 2. Install all dependencies (including dev extras)
-3. Download the Tailwind CSS standalone binary
+3. Download the moon task runner binary
 4. Install pre-commit hooks
 
 ## Running Locally
@@ -35,7 +35,6 @@ This launches:
 |---------|-----|
 | Backend API | [http://localhost:8000](http://localhost:8000) |
 | Frontend | [http://localhost:3000](http://localhost:3000) |
-| Tailwind | Watching for CSS changes |
 
 Press `Ctrl+C` to stop all services.
 
@@ -44,7 +43,6 @@ To run services individually:
 ```bash
 make run-backend    # Backend only
 make run-frontend   # Frontend only
-make tailwind-watch # Tailwind watcher only
 ```
 
 ## Common Commands

@@ -1,23 +1,23 @@
 {% from "components/macros.html" import event_timeline_item, player_stats_table %}
 
-<div class="bg-white rounded-lg shadow border border-gray-100 p-6">
-    <div class="flex items-center justify-between mb-6">
-        <h3 class="text-xl font-bold text-wels-navy">
+<div class="match-detail__panel">
+    <div class="match-detail__header">
+        <h3 class="match-detail__title">
             {{ match.home_team }} vs {{ match.away_team }}
         </h3>
-        <span class="text-sm text-gray-500">{{ match.date }} &middot; {{ match.venue }}</span>
+        <span class="match-detail__info">{{ match.date }} &middot; {{ match.venue }}</span>
     </div>
 
-    <div class="text-center mb-6">
-        <div class="text-4xl font-bold text-wels-blue">
+    <div class="match-detail__score">
+        <div class="match-detail__score-value">
             {{ match.home_score }} – {{ match.away_score }}
         </div>
     </div>
 
     {% if match.events %}
-    <div class="mb-6">
-        <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Match Timeline</h4>
-        <div class="space-y-2">
+    <div class="timeline__section">
+        <h4 class="timeline__heading">Match Timeline</h4>
+        <div class="timeline__list">
             {% for event in match.events %}
             {{ event_timeline_item(event) }}
             {% endfor %}
@@ -26,7 +26,7 @@
     {% endif %}
 
     {% if match.home_players %}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="player-stats__grid">
         {{ player_stats_table(match.home_players, match.home_team) }}
         {{ player_stats_table(match.away_players, match.away_team) }}
     </div>

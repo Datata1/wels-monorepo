@@ -23,7 +23,7 @@ async def _get_soup(client: AsyncClient, path: str) -> BeautifulSoup:
 async def test_matches_partial_has_cards(client: AsyncClient):
     """Each match is rendered as a card div."""
     soup = await _get_soup(client, "/partials/matches")
-    assert soup.find("div", class_="bg-white") is not None
+    assert soup.find("div", class_="match-card") is not None
 
 
 async def test_matches_partial_shows_team_names(client: AsyncClient):

@@ -17,13 +17,13 @@ wels-monorepo/
 │       │   ├── app.py        # FastAPI app serving HTML
 │       │   ├── config.py     # Settings (backend_url, etc.)
 │       │   ├── routes/       # Partial HTML route handlers
-│       │   ├── static/css/   # Tailwind input + compiled output
+│       │   ├── static/css/   # Hand-authored semantic CSS
 │       │   └── templates/    # Jinja2 templates
 │       │       ├── components/   # Reusable macros
 │       │       └── partials/     # HTMX partial fragments
 │       └── tests/
 ├── docs/                 # MkDocs documentation (this site)
-├── tools/                # Downloaded binaries (Tailwind CLI)
+├── tools/                # Downloaded binaries (moon)
 ├── Makefile              # Orchestration commands
 ├── mkdocs.yml            # Documentation config
 ├── ruff.toml             # Shared linting config
@@ -69,9 +69,9 @@ Components live in `templates/components/macros.html` and are imported with:
 {% from "components/macros.html" import match_card, status_badge %}
 ```
 
-### Tailwind CSS v4 (standalone)
+### Plain CSS with design tokens
 
-Tailwind runs as a standalone binary — no Node.js required. The binary is auto-downloaded per platform via the Makefile. Tailwind v4 uses the new CSS-first configuration in `input.css` instead of a `tailwind.config.js` file.
+Styling uses hand-authored semantic CSS with CSS custom properties as design tokens. No build step or external tooling is required — `style.css` is committed directly and served as a static file.
 
 ## Tooling
 
@@ -82,5 +82,4 @@ Tailwind runs as a standalone binary — no Node.js required. The binary is auto
 | **ty** | Type checking | `ty.toml` (root) |
 | **pytest** | Testing | `pyproject.toml` per package |
 | **pre-commit** | Git hooks (ruff + ty) | `.pre-commit-config.yaml` |
-| **Tailwind CSS** | Styling | `input.css` (v4 syntax) |
 | **GitHub Actions** | CI (lint + typecheck + test) | `.github/workflows/tests.yml` |

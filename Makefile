@@ -1,19 +1,11 @@
-.PHONY: setup setup-backend setup-frontend setup-tailwind setup-moon setup-hooks \
+.PHONY: setup setup-backend setup-frontend setup-moon setup-hooks \
        dev run-backend run-frontend \
        lint lint-backend lint-frontend \
        typecheck typecheck-backend typecheck-frontend \
        format format-backend format-frontend \
        test test-backend test-frontend test-integration test-ui \
-       tailwind tailwind-watch \
        docs docs-build \
        stop clean
-
-FRONTEND_CSS_IN  := packages/frontend/src/frontend/static/css/input.css
-FRONTEND_CSS_OUT := packages/frontend/src/frontend/static/css/style.css
-FRONTEND_DIR     := packages/frontend
-
-TAILWIND_VERSION := v4.1.3
-TAILWIND_BIN     := tools/tailwindcss
 
 MOON_VERSION     := latest
 MOON_BIN         := tools/moon
@@ -25,29 +17,23 @@ UNAME_M := $(shell uname -m)
 
 ifeq ($(UNAME_S),Darwin)
   ifeq ($(UNAME_M),arm64)
-    TAILWIND_PLATFORM := macos-arm64
     MOON_PLATFORM     := aarch64-apple-darwin
   else
-    TAILWIND_PLATFORM := macos-x64
     MOON_PLATFORM     := x86_64-apple-darwin
   endif
 else ifeq ($(UNAME_S),Linux)
   ifeq ($(UNAME_M),aarch64)
-    TAILWIND_PLATFORM := linux-arm64
     MOON_PLATFORM     := aarch64-unknown-linux-gnu
   else
-    TAILWIND_PLATFORM := linux-x64
     MOON_PLATFORM     := x86_64-unknown-linux-gnu
   endif
 else
-  TAILWIND_PLATFORM := windows-x64.exe
   MOON_PLATFORM     := x86_64-pc-windows-msvc
 endif
 
-TAILWIND_URL := https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_PLATFORM)
 MOON_URL     := https://github.com/moonrepo/moon/releases/$(MOON_VERSION)/download/moon_cli-$(MOON_PLATFORM).tar.xz
 
-setup: setup-backend setup-frontend setup-tailwind setup-moon setup-hooks
+setup: setup-backend setup-frontend setup-moon setup-hooks
 
 setup-backend:
 	cd packages/backend && uv sync --all-extras
@@ -58,15 +44,6 @@ setup-frontend:
 setup-hooks:
 	cd packages/backend && uv run pre-commit install
 
-setup-tailwind: $(TAILWIND_BIN)
-
-$(TAILWIND_BIN):
-	@mkdir -p tools
-	@echo "Downloading Tailwind CSS $(TAILWIND_VERSION) for $(TAILWIND_PLATFORM)..."
-	@curl -sL $(TAILWIND_URL) -o $(TAILWIND_BIN)
-	@chmod +x $(TAILWIND_BIN)
-	@echo "Tailwind CSS installed at $(TAILWIND_BIN)"
-
 setup-moon: $(MOON_BIN)
 
 $(MOON_BIN):
@@ -76,16 +53,14 @@ $(MOON_BIN):
 	@chmod +x $(MOON_BIN)
 	@echo "moon installed at $(MOON_BIN)"
 
-dev: $(TAILWIND_BIN) $(MOON_BIN)
+dev: $(MOON_BIN)
 	@echo "Starting WELS platform..."
 	@echo "  Backend  → http://localhost:8000"
 	@echo "  Frontend → http://localhost:3000"
 	@echo "  Docs     → http://localhost:8080"
-	@echo "  Tailwind → watching for changes"
 	@echo "  Press Ctrl+C to stop all services"
 	@trap 'kill 0; exit 0' INT TERM; \
 	 $(MOON_BIN) run backend:run frontend:run 2>&1 & \
-	 cd $(FRONTEND_DIR) && ../../$(TAILWIND_BIN) -i src/frontend/static/css/input.css -o src/frontend/static/css/style.css --watch & \
 	 cd packages/backend && uv run mkdocs serve -f ../../mkdocs.yml -a localhost:8080 & \
 	 wait
 
@@ -133,12 +108,6 @@ test-integration:
 
 test-ui:
 	cd packages/frontend && uv run pytest -m ui
-
-tailwind: $(TAILWIND_BIN)
-	cd $(FRONTEND_DIR) && ../../$(TAILWIND_BIN) -i src/frontend/static/css/input.css -o src/frontend/static/css/style.css --minify
-
-tailwind-watch: $(TAILWIND_BIN)
-	cd $(FRONTEND_DIR) && ../../$(TAILWIND_BIN) -i src/frontend/static/css/input.css -o src/frontend/static/css/style.css --watch
 
 docs:
 	cd packages/backend && uv run mkdocs serve -f ../../mkdocs.yml -a localhost:8080

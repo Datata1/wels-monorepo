@@ -1,6 +1,6 @@
 # Frontend Overview
 
-The frontend is a FastAPI server that renders HTML using Jinja2 templates with HTMX for interactivity and Tailwind CSS for styling.
+The frontend is a FastAPI server that renders HTML using Jinja2 templates with HTMX for interactivity and semantic CSS with design tokens for styling.
 
 ## Running
 
@@ -25,8 +25,7 @@ src/frontend/
 │   └── __init__.py   # HTMX partial HTML endpoints
 ├── static/
 │   └── css/
-│       ├── input.css     # Tailwind v4 source
-│       └── style.css     # Compiled output
+│       └── style.css     # Semantic CSS with design tokens
 └── templates/
     ├── base.html         # Root layout (nav, footer, scripts)
     ├── index.html        # Dashboard page

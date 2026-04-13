@@ -17,7 +17,7 @@ A monorepo for a handball analytics platform that helps trainers analyze matches
 - **Python 3.12+** with [uv](https://docs.astral.sh/uv/) for package management
 - **FastAPI** — backend API and frontend server
 - **HTMX** + **Jinja2** — server-rendered frontend with dynamic partial updates
-- **Tailwind CSS v4** — utility-first styling (standalone CLI, no Node.js)
+- **Semantic CSS** — hand-authored with CSS custom properties (design tokens)
 - **Pydantic v2** — data models and settings
 - **ruff** — linting and formatting
 - **ty** — type checking
