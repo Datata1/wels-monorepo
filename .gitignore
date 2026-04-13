@@ -43,3 +43,7 @@ htmlcov/
 
 # MkDocs build output
 site/
+
+# other
+.stfolder
+.stignore
