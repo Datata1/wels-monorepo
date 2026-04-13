@@ -37,10 +37,10 @@ make dev
 ```
 
 On Windows
-```bash
-\Make.ps1 setup
+```powershell
+.\Make.ps1 setup
 
-\Make.ps1 dev
+.\Make.ps1 dev
 ```
 
 This launches:
