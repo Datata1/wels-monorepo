@@ -29,23 +29,16 @@ src/frontend/
 └── templates/
     ├── base.html         # Root layout (nav, footer, scripts)
     ├── index.html        # Dashboard page
-    ├── standings.html    # Standings page
-    ├── components/
-    │   └── macros.html   # Reusable UI components
-    └── partials/
-        ├── matches.html       # Match list fragment
-        ├── match_detail.html  # Match detail fragment
-        └── standings.html     # Standings table fragment
+    └── components/
+        └── macros.html   # Reusable UI components
 ```
 
 ## How It Works
 
 1. Browser requests a full page (e.g., `/`)
 2. Frontend renders `index.html` extending `base.html`
-3. HTMX attribute `hx-get="/partials/matches"` fires on page load
-4. Frontend route fetches JSON from the backend API via `httpx`
-5. Frontend renders the partial template and returns an HTML fragment
-6. HTMX swaps the fragment into the page — no JavaScript required
+3. HTMX partials can be added under `routes/` to fetch data from the backend and return HTML fragments
+4. HTMX swaps fragments into the page — no JavaScript required
 
 ## Routes
 

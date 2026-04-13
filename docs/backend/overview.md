@@ -26,18 +26,7 @@ Settings are managed via environment variables with the `WELS_` prefix:
 src/backend/
 ├── app.py        # FastAPI application factory + health check
 ├── config.py     # BaseSettings configuration
-├── models.py     # Pydantic domain models + demo data
+├── models.py     # Pydantic domain models
 └── routes/
     └── __init__.py   # API route handlers
 ```
-
-## Models
-
-::: backend.models
-    options:
-      members:
-        - PlayerStats
-        - MatchEvent
-        - Match
-        - TeamOverview
-      show_source: false

@@ -22,15 +22,12 @@ app.include_router(partials_router)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request) -> HTMLResponse:
+    """Render the main dashboard page."""
     return templates.TemplateResponse(request, "index.html")
 
 
-@app.get("/standings", response_class=HTMLResponse)
-async def standings(request: Request):
-    return templates.TemplateResponse(request, "standings.html")
-
-
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
+    """Service liveness probe."""
     return {"status": "ok"}
