@@ -1,77 +1,175 @@
 # Architecture
 
-## Monorepo Layout
+## System overview
+
+```
+Browser ──(HTML + HTMX)──▶ Frontend (port 3000)
+                                │
+                          httpx.AsyncClient
+                                │
+                                ▼
+                          Backend API (port 8000)
+                                │
+                          data/matches.duckdb
+                                ▲
+                                │
+                         wels-ingest CLI
+                                │
+                          Match video (MP4)
+```
+
+## Full data flow
+
+```
+┌─────────────┐
+│  match.mp4  │
+└──────┬──────┘
+       │  wels-ingest <video> <match_id>
+       ▼
+┌───────────────────────────────────┐
+│  Ingestion pipeline               │
+│  (packages/ingestion)             │
+│                                   │
+│  1. Detect players + ball         │
+│  2. Track identities              │
+│  3. Estimate body pose            │
+│  4. Classify teams by jersey      │
+│  5. Map pixels → court metres     │
+└─────────────────┬─────────────────┘
+                  │  FrameState (typed dataclass)
+                  ▼
+┌─────────────────────────────┐
+│  data/matches.duckdb        │
+│  matches / frames /         │
+│  players / ball /           │
+│  action_labels              │
+└──────────┬──────────────────┘
+           │                    ╔══════════════════════╗
+           │                    ║  Manual annotation   ║
+           │                    ║  action_labels table ║
+           │                    ╚══════════╤═══════════╝
+           │                               │
+           │           ┌───────────────────┘
+           │           │
+           │           ▼
+           │  ┌─────────────────────┐
+           │  │  wels-train         │
+           │  │  (packages/ml)      │
+           │  │                     │
+           │  │  GCN + LSTM model   │
+           │  └──────────┬──────────┘
+           │             │  data/models/action_best.pt
+           │             │
+           ▼             ▼
+┌──────────────────────────────────┐
+│  Backend API (port 8000)         │
+│  (packages/backend)              │
+│                                  │
+│  GET /api/v1/matches             │
+│  GET /api/v1/analytics/heatmap   │
+│  GET /api/v1/predictions         │
+└─────────────────┬────────────────┘
+                  │  JSON
+                  ▼
+┌─────────────────────────────────┐
+│  Frontend (port 3000)           │
+│  (packages/frontend)            │
+│                                 │
+│  Jinja2 templates + HTMX        │
+│  Match list, heatmap viewer,    │
+│  formation timeline             │
+└─────────────────────────────────┘
+```
+
+## Monorepo layout
 
 ```
 wels-monorepo/
 ├── packages/
-│   ├── backend/          # FastAPI API server (port 8000)
-│   │   ├── src/backend/
-│   │   │   ├── app.py        # FastAPI application
-│   │   │   ├── config.py     # Settings via pydantic-settings
-│   │   │   ├── models.py     # Pydantic domain models
-│   │   │   └── routes/       # API route handlers
-│   │   └── tests/
-│   └── frontend/         # HTMX frontend server (port 3000)
-│       ├── src/frontend/
-│       │   ├── app.py        # FastAPI app serving HTML
-│       │   ├── config.py     # Settings (backend_url, etc.)
-│       │   ├── routes/       # Partial HTML route handlers
-│       │   ├── static/css/   # Hand-authored semantic CSS
-│       │   └── templates/    # Jinja2 templates
-│       │       ├── components/   # Reusable macros
-│       │       └── partials/     # HTMX partial fragments
-│       └── tests/
-├── docs/                 # MkDocs documentation (this site)
-├── tools/                # Downloaded binaries (moon)
-├── Makefile              # Orchestration commands
-├── mkdocs.yml            # Documentation config
-├── ruff.toml             # Shared linting config
-└── ty.toml               # Shared type checking config
+│   ├── backend/          # FastAPI REST API (port 8000)
+│   │   └── src/backend/
+│   │       ├── app.py
+│   │       ├── config.py
+│   │       ├── models.py
+│   │       └── routes/
+│   ├── frontend/         # HTMX + Jinja2 server (port 3000)
+│   │   └── src/frontend/
+│   │       ├── app.py
+│   │       ├── routes/
+│   │       ├── static/css/
+│   │       └── templates/
+│   ├── ingestion/        # CV pipeline: video → DuckDB
+│   │   └── src/ingestion/
+│   │       ├── pipeline/     # detection, pose, team, court
+│   │       ├── storage/      # DuckDB schema + writer
+│   │       ├── orchestrator.py
+│   │       └── cli.py
+│   └── ml/               # GCN + LSTM model: DuckDB → predictions
+│       └── src/ml/
+│           ├── data/         # feature queries, graph construction, dataset
+│           ├── models/       # ActionPredictor (GCN + LSTM)
+│           ├── training/     # training loop + evaluation
+│           └── inference.py
+├── data/                 # runtime data (not committed)
+│   ├── matches.duckdb
+│   ├── models/
+│   └── videos/           # recommended location for match recordings
+├── docs/                 # MkDocs documentation
+├── Makefile
+├── ruff.toml
+└── ty.toml
 ```
 
-## Design Decisions
+## Package boundaries
 
-### Separate packages, separate venvs
+Packages communicate through **DuckDB** (data) and **HTTP** (services).
+They never import each other.
 
-Each package under `packages/` is a standalone Python project with its own `pyproject.toml` and `.venv`. This ensures:
+| Package | Reads from | Writes to |
+|---------|-----------|-----------|
+| `ingestion` | video file | `data/matches.duckdb` |
+| `ml` | `data/matches.duckdb` (read-only) | `data/models/*.pt` |
+| `backend` | `data/matches.duckdb`, `data/models/*.pt` | HTTP responses |
+| `frontend` | backend HTTP | HTML responses |
 
-- **No dependency conflicts** between backend and frontend
-- **Independent versioning** and deployment
-- **Fast installs** — changing one package doesn't reinstall the other
+This means each package can evolve, be replaced, or be scaled independently.
 
-### Frontend → Backend communication
+## Design decisions
 
-The frontend fetches data from the backend API over HTTP using `httpx.AsyncClient`:
+### Two separate FastAPI apps
 
-```
-Browser ──(HTML)──▶ Frontend (port 3000)
-                         │
-                    httpx.AsyncClient
-                         │
-                         ▼
-                    Backend API (port 8000)
-```
+Frontend and backend have independent venvs and ports. The frontend is a "thin BFF"
+(Backend for Frontend) that calls the real API over HTTP. Benefits:
 
-HTMX loads partial HTML fragments from the frontend, which in turn fetches JSON from the backend and renders it through Jinja2 templates.
+- No dependency conflicts between packages
+- Can be deployed and scaled separately
+- Frontend can be swapped for a different UI without changing the API
 
-### HTMX + Jinja2 component model
+### HTMX, not React/Vue
 
-Instead of a JavaScript framework, we use server-rendered HTML with:
+No JavaScript build toolchain. Dynamic UI is achieved via server-sent HTML fragments.
+HTMX attributes (`hx-get`, `hx-target`, `hx-swap`) trigger partial page updates.
 
-- **`{% macro %}`** — reusable UI components with props (like React components)
-- **`{% include %}`** — static partial inclusion
-- **HTMX attributes** — `hx-get`, `hx-target`, `hx-swap` for dynamic updates without JavaScript
+### DuckDB, not PostgreSQL
 
-Components live in `templates/components/macros.html` and are imported with:
+Single file, zero config, columnar storage. Ideal for the analytical query patterns
+(time-window scans, cross-match aggregations) this platform needs.
+See [Storage](storage.md) for the full schema.
 
-```jinja
-{% from "components/macros.html" import match_card, status_badge %}
-```
+### Ingestion is a CLI, not a service
 
-### Plain CSS with design tokens
+`wels-ingest` runs as a command-line tool, not a persistent process.
+The backend triggers it as a `FastAPI BackgroundTask` when the trainer uploads a video.
+This is simpler than a separate worker queue and sufficient for the expected scale
+(processing a full match takes 30–90 minutes depending on hardware).
 
-Styling uses hand-authored semantic CSS with CSS custom properties as design tokens. No build step or external tooling is required — `style.css` is committed directly and served as a static file.
+### uv over pip/Poetry
+
+Faster installs, deterministic lockfiles, first-class workspace support.
+
+### ruff + ty, not black/mypy
+
+Both are written in Rust — orders of magnitude faster. Maintained by the same team (Astral).
 
 ## Tooling
 
@@ -81,5 +179,6 @@ Styling uses hand-authored semantic CSS with CSS custom properties as design tok
 | **ruff** | Linting + formatting | `ruff.toml` (root) |
 | **ty** | Type checking | `ty.toml` (root) |
 | **pytest** | Testing | `pyproject.toml` per package |
+| **moon** | Task runner (parallel, cached) | `.moon/` |
 | **pre-commit** | Git hooks (ruff + ty) | `.pre-commit-config.yaml` |
-| **GitHub Actions** | CI (lint + typecheck + test) | `.github/workflows/tests.yml` |
+| **GitHub Actions** | CI (lint + typecheck + test) | `.github/workflows/` |
