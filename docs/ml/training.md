@@ -117,7 +117,45 @@ Training output:
 10:08:44  INFO  Training complete. Best val_acc=0.783. Checkpoint: data/models/action_best.pt
 ```
 
-## Step 4 — Evaluate
+## Step 4 — Score matches
+
+After training, run `wels-score` for each match you want the backend to serve.
+This pre-computes action predictions, formations, and possession phases into DuckDB.
+
+```bash
+cd packages/ml
+
+# Score a single match (auto-discovers data/models/action_predictor_best.pt)
+uv run wels-score match_1
+
+# Or point explicitly at the checkpoint
+uv run wels-score match_1 --checkpoint data/models/action_predictor_best.pt
+uv run wels-score match_2 --checkpoint data/models/action_predictor_best.pt
+```
+
+Expected output:
+
+```
+10:08:55  INFO      Loaded action predictor from data/models/action_predictor_best.pt
+10:08:55  INFO      Scoring match: match_1
+10:08:55  INFO      Step 1/3: action predictions
+10:08:55  INFO        4320 ball-carrier frames to score
+10:09:12  INFO      Step 2/3: formation classification
+10:09:14  INFO      Step 3/3: possession phases
+10:09:14  INFO        143 possession phases written
+10:09:14  INFO      Scoring complete: match_1
+```
+
+Scoring is safe to re-run — existing results are deleted before the new ones are written.
+
+Formations and possession phases are written even without a checkpoint.
+If you want basic analytics before training a model:
+
+```bash
+uv run wels-score match_1  # no --checkpoint needed for formations + possession
+```
+
+## Step 5 — Evaluate
 
 After training, check the confusion matrix to understand where the model makes mistakes:
 

@@ -3,18 +3,25 @@
 The ML package predicts **what a player will do next** (pass, shoot, dribble, hold)
 from a short sequence of recent frames. It reads from DuckDB and never touches video.
 
-## Two-stage architecture
+## Three-stage pipeline
 
 ```
-Stage 1 — Computer Vision (ingestion package)
+Stage 1 — Computer Vision (ingestion)
   Video → per-frame positions, teams, ball → DuckDB
 
-Stage 2 — Action Prediction (ml package)
-  DuckDB → graphs → GCN + LSTM → action probabilities
+Stage 2 — Training (ml: wels-train)
+  DuckDB (with action labels) → GCN + LSTM → checkpoint
+
+Stage 3 — Scoring (ml: wels-score)
+  DuckDB + checkpoint → action_predictions, formations, possession_phases → DuckDB
 ```
 
 The stages are independent. You can improve detection without retraining the
-prediction model, and vice versa.
+prediction model. After training a new checkpoint, re-run `wels-score` to update
+the pre-computed predictions in DuckDB.
+
+The backend reads exclusively from the three scoring output tables —
+no on-the-fly inference at request time. This makes serving a 60-minute match instant.
 
 ## Action classes
 
@@ -96,14 +103,83 @@ Across 25 frames:
     options:
       show_source: false
 
-## Inference
+## Batch scoring outputs
 
-Once a checkpoint exists at `data/models/action_best.pt`, the backend can call:
+`wels-score` writes three tables to DuckDB. The backend reads from these directly.
+
+### `action_predictions`
+
+Per-frame action probabilities for the ball carrier. Only frames where a ball carrier
+exists and a full history window is available are included.
+
+| Column | Description |
+|--------|-------------|
+| `match_id`, `frame_id`, `track_id` | PK — identifies ball carrier at this frame |
+| `pass_prob`, `shot_prob`, `dribble_prob`, `hold_prob` | Softmax probabilities |
+| `predicted_action` | Argmax of the four probabilities |
+
+### `formations`
+
+Rule-based formation label for each team, sampled every 5 frames.
+
+| Label | Description |
+|-------|-------------|
+| `6-0` | Compact defensive line — low y-spread, shallow depth gap |
+| `5-1` | One player significantly pressed forward |
+| `4-2` | Two distinct depth layers |
+| `attack` | Team primarily in opponent's half |
+| `transition` | Players spread across the full court |
+| `unknown` | Fewer than 4 court-mapped players |
+
+### `possession_phases`
+
+Continuous possession sequences derived from the per-frame ball carrier.
+Short interruptions (dropped detections, ball out of frame) are smoothed out.
+
+| Column | Description |
+|--------|-------------|
+| `phase_id` | Sequential ID within the match |
+| `team` | `"A"` or `"B"` |
+| `start_frame` / `end_frame` | Frame range |
+| `start_time_s` / `end_time_s` | Timestamps in seconds |
+| `duration_s` | Generated column: `end_time_s - start_time_s` |
+
+## Scoring CLI
+
+```bash
+cd packages/ml
+
+# Auto-discover checkpoint in data/models/
+uv run wels-score 2026-04-13_wels_vs_linz
+
+# Explicit checkpoint path
+uv run wels-score 2026-04-13_wels_vs_linz \
+    --checkpoint data/models/action_predictor_best.pt
+
+# CPU-only machine, custom DB path
+uv run wels-score 2026-04-13_wels_vs_linz \
+    --device cpu --db /data/matches.duckdb
+
+# Verbose logging
+uv run wels-score 2026-04-13_wels_vs_linz --verbose
+```
+
+Formations and possession phases are written even if no checkpoint is available —
+only `action_predictions` requires a trained model.
+
+Re-running `wels-score` on the same match is safe: existing results are cleared before
+the new ones are written.
+
+## Direct inference (for scripts and notebooks)
+
+`ActionInference` is available for ad-hoc use outside of the scoring pipeline:
 
 ```python
 from ml.inference import ActionInference
+from ml.config import MLSettings
 
-predictor = ActionInference(Path("data/models/action_best.pt"))
+settings = MLSettings()
+predictor = ActionInference(settings.models_dir / "action_predictor_best.pt", settings)
 probs = predictor.predict(
     match_id="2026-04-13_wels_vs_linz",
     center_frame=15000,

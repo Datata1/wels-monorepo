@@ -20,6 +20,11 @@ to start, no configuration, just a file.
 matches ──< frames ──< players
                   ──< ball
                   ──< action_labels
+
+Scoring outputs (written by wels-score):
+matches ──< action_predictions
+        ──< formations
+        ──< possession_phases
 ```
 
 ### `matches`
@@ -86,6 +91,40 @@ separately via the annotation workflow.
 | `match_id` + `frame_id` + `track_id` | PK | Which player, which frame |
 | `action` | TEXT | `"pass"`, `"shot"`, `"dribble"`, `"hold"`, ... |
 | `annotator` | TEXT | Who labeled it (default: `"manual"`) |
+
+### `action_predictions`
+
+Pre-computed per-frame action probabilities for the ball carrier.
+Written by `wels-score`. Only frames where a full history window exists are included.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `match_id` + `frame_id` + `track_id` | PK | Ball carrier at this frame |
+| `pass_prob` / `shot_prob` / `dribble_prob` / `hold_prob` | DOUBLE | Softmax output |
+| `predicted_action` | TEXT | Argmax: `"pass"`, `"shot"`, `"dribble"`, or `"hold"` |
+
+### `formations`
+
+Rule-based formation label per team, sampled every 5 frames.
+Written by `wels-score` regardless of whether a checkpoint exists.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `match_id` + `frame_id` + `team` | PK | |
+| `formation` | TEXT | `"6-0"`, `"5-1"`, `"4-2"`, `"attack"`, `"transition"`, or `"unknown"` |
+
+### `possession_phases`
+
+Continuous possession sequences. Short interruptions (dropped detection,
+ball out of frame) are smoothed over. Written by `wels-score`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `match_id` + `phase_id` | PK | Sequential ID per match |
+| `team` | TEXT | `"A"` or `"B"` |
+| `start_frame` / `end_frame` | INTEGER | Frame range |
+| `start_time_s` / `end_time_s` | DOUBLE | Timestamps in seconds |
+| `duration_s` | DOUBLE (virtual) | `end_time_s - start_time_s` |
 
 ## Common queries
 
@@ -160,6 +199,34 @@ WHERE match_id = '2026-04-13_wels_vs_linz'
   AND frame_id BETWEEN 1000 AND 1024
   AND court_x IS NOT NULL
 ORDER BY frame_id, track_id;
+```
+
+### Formation timeline for a match
+
+```sql
+SELECT frame_id, team, formation
+FROM formations
+WHERE match_id = '2026-04-13_wels_vs_linz'
+ORDER BY frame_id, team;
+```
+
+### Possession phases sorted by duration
+
+```sql
+SELECT phase_id, team, start_time_s, end_time_s, duration_s
+FROM possession_phases
+WHERE match_id = '2026-04-13_wels_vs_linz'
+ORDER BY duration_s DESC;
+```
+
+### Action prediction distribution
+
+```sql
+SELECT predicted_action, COUNT(*) AS frames, ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS pct
+FROM action_predictions
+WHERE match_id = '2026-04-13_wels_vs_linz'
+GROUP BY predicted_action
+ORDER BY frames DESC;
 ```
 
 ## Backup and export
