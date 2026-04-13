@@ -32,7 +32,12 @@ function Invoke-SetupMoon {
     Write-Host "Downloading moon for $MOON_PLATFORM..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $tmp = Join-Path $env:TEMP "moon_cli.zip"
-    Invoke-WebRequest -Uri $MOON_URL -OutFile $tmp -UseBasicParsing
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        Invoke-WebRequest -Uri $MOON_URL -OutFile $tmp -UseBasicParsing
+    }
+    else {
+        Invoke-WebRequest -Uri $MOON_URL -OutFile $tmp
+    }
     $extract = Join-Path $env:TEMP "moon_extract"
     Expand-Archive -Path $tmp -DestinationPath $extract -Force
     Copy-Item -Path (Join-Path $extract "moon.exe") -Destination $MOON_BIN -Force
