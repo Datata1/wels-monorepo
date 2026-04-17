@@ -6,6 +6,7 @@
 |-------------|-------|
 | Python 3.12+ | |
 | [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node + pnpm | Installed automatically by moon's toolchain (see `.moon/toolchain.yml`). No manual install required — `make setup-frontend` or `./tools/moon run frontend:setup` pulls the pinned versions. |
 | NVIDIA GPU | For ingestion and ML training. CUDA 12.1+. CPU fallback available but slow. |
 
 ## Setup
@@ -17,8 +18,9 @@ git clone <repo-url> && cd wels-monorepo
 make setup
 ```
 
-This installs venvs and dependencies for `backend`, `frontend`, `ingestion`, and `ml`,
-downloads the moon task runner, and installs pre-commit hooks.
+This downloads the moon task runner, installs Python venvs for `backend`,
+`ingestion`, and `ml`, runs `pnpm install` for `frontend`, and installs pre-commit
+hooks. Node and pnpm themselves are installed by moon on first run.
 
 To set up an individual package only:
 
@@ -36,7 +38,7 @@ make dev
 | Service | URL |
 |---------|-----|
 | Backend API | [http://localhost:8000](http://localhost:8000) |
-| Frontend | [http://localhost:3000](http://localhost:3000) |
+| Frontend (Vite dev server) | [http://localhost:3000](http://localhost:3000) |
 | Docs | [http://localhost:8080](http://localhost:8080) |
 
 Press `Ctrl+C` to stop all services.
@@ -89,11 +91,13 @@ Or run per-package with moon:
 
 ## Adding dependencies
 
-Use `uv add` inside the relevant package directory:
+Python packages use `uv add`, the frontend uses `pnpm add`:
 
 ```bash
-cd packages/backend  && uv add some-library
+cd packages/backend   && uv add some-library
 cd packages/ingestion && uv add --dev some-dev-tool
+cd packages/frontend  && pnpm add some-lib
+cd packages/frontend  && pnpm add -D some-dev-lib
 ```
 
 Or use the `/add-dep` skill.

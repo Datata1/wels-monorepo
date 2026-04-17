@@ -45,7 +45,6 @@ plugins:
         python:
           paths:
             - packages/backend/src
-            - packages/frontend/src
             - packages/ingestion/src
             - packages/ml/src
           options:

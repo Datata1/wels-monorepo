@@ -27,7 +27,7 @@ match.mp4  →  [wels-ingest]  →  data/matches.duckdb  ───────�
 wels-monorepo/
 ├── packages/
 │   ├── backend/        # FastAPI REST API (port 8000)
-│   ├── frontend/       # HTMX + Jinja2 web UI (port 3000)
+│   ├── frontend/       # React + Vite SPA (port 3000)
 │   ├── ingestion/      # CV pipeline: video → DuckDB
 │   └── ml/             # GCN + LSTM model: train, score, analyse
 ├── data/               # Runtime data — not committed
@@ -47,6 +47,7 @@ wels-monorepo/
 |-------------|-------|
 | Python 3.12+ | |
 | [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node + pnpm | Installed automatically by moon's toolchain — see `.moon/toolchain.yml`. |
 | NVIDIA GPU (CUDA 12.1+) | Required for video ingestion and ML training. CPU fallback available but slow. |
 
 ## Quick start
@@ -129,6 +130,8 @@ Moon (parallel + cached):
 
 ## Adding dependencies
 
+Python packages (`backend`, `ingestion`, `ml`):
+
 ```bash
 cd packages/<name> && uv add <package>        # runtime dep
 cd packages/<name> && uv add --dev <package>  # dev dep
@@ -137,14 +140,25 @@ cd packages/<name> && uv add --dev <package>  # dev dep
 cd packages/ingestion && uv add --optional cv <package>
 ```
 
+Frontend (`packages/frontend`, pnpm):
+
+```bash
+cd packages/frontend && pnpm add <package>     # runtime dep
+cd packages/frontend && pnpm add -D <package>  # dev dep
+```
+
 ## Tooling
 
 | Tool | Purpose | Config |
 |------|---------|--------|
-| [uv](https://docs.astral.sh/uv/) | Package management, venvs | `pyproject.toml` per package |
-| [ruff](https://docs.astral.sh/ruff/) | Linting + formatting | `ruff.toml` |
-| [ty](https://github.com/astral-sh/ty) | Type checking | `ty.toml` |
-| [moon](https://moonrepo.dev/) | Parallel task runner + caching | `.moon/`, `moon.yml` per package |
+| [uv](https://docs.astral.sh/uv/) | Python package management, venvs | `pyproject.toml` per Python package |
+| [pnpm](https://pnpm.io/) | Node package management (frontend) | `packages/frontend/package.json` |
+| [ruff](https://docs.astral.sh/ruff/) | Python linting + formatting | `ruff.toml` |
+| [ty](https://github.com/astral-sh/ty) | Python type checking | `ty.toml` |
+| [eslint](https://eslint.org/) + [typescript-eslint](https://typescript-eslint.io/) | Frontend linting | `packages/frontend/eslint.config.js` |
+| [tsc](https://www.typescriptlang.org/) | Frontend type checking | `packages/frontend/tsconfig*.json` |
+| [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Tailwind v4](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Frontend stack | `packages/frontend/` |
+| [moon](https://moonrepo.dev/) | Parallel task runner + caching, installs Node + pnpm | `.moon/`, `moon.yml` per package |
 | [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) | Documentation | `mkdocs.yml` |
 | [pre-commit](https://pre-commit.com/) | Git hooks | `.pre-commit-config.yaml` |
 | [GitHub Actions](https://github.com/features/actions) | CI | `.github/workflows/tests.yml` |

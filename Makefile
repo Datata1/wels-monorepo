@@ -1,16 +1,17 @@
 .PHONY: setup setup-backend setup-frontend setup-moon setup-hooks \
-       dev run-backend run-frontend \
+       dev run-backend run-frontend build-frontend \
        lint lint-backend lint-frontend \
        typecheck typecheck-backend typecheck-frontend \
-       format format-backend format-frontend \
-       test test-backend test-frontend test-integration test-ui \
+       format format-backend \
+       test test-backend test-integration \
        docs docs-build \
        stop clean
 
 MOON_VERSION     := latest
 MOON_BIN         := tools/moon
 
-PACKAGES := packages/backend packages/frontend
+PY_PACKAGES := packages/backend packages/ingestion packages/ml
+JS_PACKAGES := packages/frontend
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
@@ -38,8 +39,8 @@ setup: setup-backend setup-frontend setup-moon setup-hooks
 setup-backend:
 	cd packages/backend && uv sync --all-extras
 
-setup-frontend:
-	cd packages/frontend && uv sync --all-extras
+setup-frontend: $(MOON_BIN)
+	$(MOON_BIN) run frontend:setup
 
 setup-hooks:
 	cd packages/backend && uv run pre-commit install
@@ -67,47 +68,40 @@ dev: $(MOON_BIN)
 run-backend:
 	cd packages/backend && uv run uvicorn backend.app:app --reload --port 8000
 
-run-frontend:
-	cd packages/frontend && uv run uvicorn frontend.app:app --reload --port 3000
+run-frontend: $(MOON_BIN)
+	$(MOON_BIN) run frontend:run
+
+build-frontend: $(MOON_BIN)
+	$(MOON_BIN) run frontend:build
 
 lint: lint-backend lint-frontend
 
 lint-backend:
 	cd packages/backend && uv run ruff check src/ tests/
 
-lint-frontend:
-	cd packages/frontend && uv run ruff check src/ tests/
+lint-frontend: $(MOON_BIN)
+	$(MOON_BIN) run frontend:lint
 
 typecheck: typecheck-backend typecheck-frontend
 
 typecheck-backend:
 	cd packages/backend && uv run ty check --config-file ../../ty.toml src/
 
-typecheck-frontend:
-	cd packages/frontend && uv run ty check --config-file ../../ty.toml src/
+typecheck-frontend: $(MOON_BIN)
+	$(MOON_BIN) run frontend:typecheck
 
-format: format-backend format-frontend
+format: format-backend
 
 format-backend:
 	cd packages/backend && uv run ruff format src/ tests/
 
-format-frontend:
-	cd packages/frontend && uv run ruff format src/ tests/
-
-test: test-backend test-frontend
+test: test-backend
 
 test-backend:
 	cd packages/backend && uv run pytest
 
-test-frontend:
-	cd packages/frontend && uv run pytest
-
 test-integration:
 	cd packages/backend && uv run pytest -m integration
-	cd packages/frontend && uv run pytest -m integration
-
-test-ui:
-	cd packages/frontend && uv run pytest -m ui
 
 docs:
 	cd packages/backend && uv run mkdocs serve -f ../../mkdocs.yml -a localhost:8080
@@ -116,7 +110,11 @@ docs-build:
 	cd packages/backend && uv run mkdocs build -f ../../mkdocs.yml
 
 clean:
-	@for pkg in $(PACKAGES); do \
+	@for pkg in $(PY_PACKAGES); do \
 		echo "Cleaning $$pkg..."; \
 		rm -rf $$pkg/.venv $$pkg/uv.lock; \
+	done
+	@for pkg in $(JS_PACKAGES); do \
+		echo "Cleaning $$pkg..."; \
+		rm -rf $$pkg/node_modules $$pkg/dist; \
 	done
