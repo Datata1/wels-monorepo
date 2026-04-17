@@ -1,50 +1,44 @@
 $schema: "https://moonrepo.dev/schemas/project.json"
 
-language: python
+language: typescript
 
 tasks:
   setup:
-    command: uv sync --all-extras
+    command: pnpm install
+    inputs:
+      - "package.json"
+      - "pnpm-lock.yaml"
     options:
       runInCI: false
 
   run:
-    command: uv run uvicorn frontend.app:app --reload --port 3000
+    command: pnpm dev
     options:
       persistent: true
       runInCI: false
 
   lint:
-    command: uv run ruff check src/ tests/
+    command: pnpm lint
     inputs:
-      - "src/**/*.py"
-      - "tests/**/*.py"
-
-  format:
-    command: uv run ruff format src/ tests/
-    inputs:
-      - "src/**/*.py"
-      - "tests/**/*.py"
+      - "src/**/*.{ts,tsx}"
+      - "eslint.config.js"
+      - "package.json"
 
   typecheck:
-    command: uv run ty check --config-file ../../ty.toml src/
+    command: pnpm typecheck
     inputs:
-      - "src/**/*.py"
+      - "src/**/*.{ts,tsx}"
+      - "tsconfig*.json"
+      - "package.json"
 
-  test:
-    command: uv run pytest
+  build:
+    command: pnpm build
     inputs:
-      - "src/**/*.py"
-      - "tests/**/*.py"
-
-  test-integration:
-    command: uv run pytest -m integration
-    inputs:
-      - "src/**/*.py"
-      - "tests/**/*.py"
-
-  test-ui:
-    command: uv run pytest -m ui
-    inputs:
-      - "src/**/*.py"
-      - "tests/**/*.py"
+      - "src/**/*"
+      - "index.html"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - "postcss.config.mjs"
+      - "package.json"
+    outputs:
+      - "dist"

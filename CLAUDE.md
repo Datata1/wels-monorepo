@@ -7,9 +7,9 @@
 ## Architecture
 
 ```
-Browser ──(HTML + HTMX)──> Frontend (port 3000)
+Browser ──(HTTP + JSON)──> Frontend (port 3000, Vite + React)
                                  │
-                           httpx.AsyncClient
+                            fetch() / ky / axios
                                  │
                                  ▼
                            Backend API (port 8000)
@@ -48,14 +48,18 @@ wels-monorepo/
 │   │       ├── config.py     # pydantic-settings (WELS_ prefix)
 │   │       ├── models.py     # Pydantic domain models
 │   │       └── routes/       # API route modules
-│   ├── frontend/         # HTMX + Jinja2 server (port 3000)
-│   │   └── src/frontend/
-│   │       ├── app.py
-│   │       ├── routes/
-│   │       ├── static/css/
-│   │       └── templates/
-│   │           ├── base.html
-│   │           └── components/macros.html
+│   ├── frontend/         # React + Vite SPA (port 3000)
+│   │   ├── package.json
+│   │   ├── vite.config.ts
+│   │   ├── tsconfig*.json
+│   │   ├── eslint.config.js
+│   │   ├── moon.yml            # language: typescript; setup/run/lint/typecheck/build
+│   │   ├── index.html
+│   │   └── src/
+│   │       ├── main.tsx
+│   │       ├── app/            # App.tsx + view components + shadcn/ui primitives
+│   │       ├── imports/        # Logo + static assets
+│   │       └── styles/         # tailwind.css, theme.css, wels.css, fonts.css, index.css
 │   ├── ingestion/        # CV pipeline: video → DuckDB
 │   │   └── src/ingestion/
 │   │       ├── pipeline/     # detection, pose, team, court (pure functions)
@@ -93,21 +97,25 @@ wels-monorepo/
 
 | Layer | Tool |
 |-------|------|
-| Language | Python 3.12+ |
+| Backend / ingestion / ml language | Python 3.12+ |
+| Frontend language | TypeScript 5 (Node 20) |
 | API framework | FastAPI + Uvicorn |
-| Templating | Jinja2 + HTMX |
+| Frontend stack | React 18 + Vite 6 + Tailwind CSS v4 + shadcn/ui (Radix) |
 | Data models | Pydantic v2 |
 | Config | pydantic-settings (`WELS_` prefix) |
-| HTTP client | httpx (async) |
+| HTTP client (Python) | httpx (async) |
 | Storage | **DuckDB** (`data/matches.duckdb`) |
 | Object detection | **YOLO11** (ultralytics) + ByteTrack |
 | ML framework | **PyTorch** + **PyTorch Geometric** |
-| Package manager | **uv** (not pip, not Poetry) |
-| Build backend | hatchling |
-| Task runner | **moon** (`./tools/moon`) |
-| Linter/formatter | **ruff** |
-| Type checker | **ty** (all rules as errors) |
-| Test framework | pytest + pytest-asyncio |
+| Python package manager | **uv** (not pip, not Poetry) |
+| Node package manager | **pnpm** (installed by moon's node toolchain) |
+| Python build backend | hatchling |
+| Task runner | **moon** (`./tools/moon`), also provisions Node + pnpm |
+| Python linter/formatter | **ruff** |
+| Frontend linter | **eslint** + typescript-eslint |
+| Python type checker | **ty** (all rules as errors) |
+| Frontend type checker | **tsc** (`tsc -b --noEmit`, strict) |
+| Test framework (Python) | pytest + pytest-asyncio |
 | Docs | MkDocs Material |
 | CI | GitHub Actions |
 
@@ -115,19 +123,20 @@ wels-monorepo/
 
 ```bash
 # First-time setup
-make setup          # install all venvs + pre-commit hooks
+make setup          # venvs (Python), pnpm install (frontend), moon, pre-commit hooks
 
 # Development
 make dev            # backend + frontend + docs (parallel)
 make run-backend    # → http://localhost:8000
-make run-frontend   # → http://localhost:3000
+make run-frontend   # → http://localhost:3000 (Vite dev server)
+make build-frontend # production build to packages/frontend/dist/
 make docs           # → http://localhost:8080
 
-# Code quality (all packages)
-make lint
-make format
-make typecheck
-make test
+# Code quality
+make lint           # ruff (Python) + eslint (frontend)
+make format         # ruff format (Python only)
+make typecheck      # ty (Python) + tsc (frontend)
+make test           # pytest (Python packages; frontend has no tests yet)
 make test-integration
 
 # Video ingestion (requires GPU or --device cpu)
@@ -156,12 +165,12 @@ uv run wels-score <match_id> --checkpoint data/models/action_predictor_best.pt
 2. Define an `APIRouter` and register it in `app.py`.
 3. Use Pydantic v2 models in `models.py` or a local `schemas.py`.
 
-### Adding a new frontend page
-1. Create a module in `packages/frontend/src/frontend/routes/`.
-2. Register the router in `app.py`.
-3. Add a Jinja2 template under `templates/`.
-4. For HTMX partials, return an HTML fragment via `TemplateResponse`.
-5. Use macros from `templates/components/macros.html`.
+### Adding a new frontend page / view
+1. Add a React component under `packages/frontend/src/app/components/` (e.g. `TeamStats.tsx`).
+2. Compose with shadcn/ui primitives from `src/app/components/ui/` (`Button`, `Card`, `Dialog`, …). Import with `@/` alias: `import { Button } from "@/app/components/ui/button"`.
+3. Wire into `App.tsx` — either extend the `AppState` union or introduce `react-router` (already installed).
+4. Use Tailwind utility classes for layout/spacing. Reach for the WELS semantic classes in `src/styles/wels.css` (`.nav`, `.page-header`, `.card`, `.btn-primary`) when you want WELS-branded chrome.
+5. Never hard-code colors — use the CSS variables in `src/styles/theme.css` (`--primary`, `--foreground`, `--color-wels-navy`, …). Tailwind color utilities like `text-primary` resolve through those variables.
 
 ### Working on the ingestion pipeline
 - `pipeline/` modules are **pure functions** — no file I/O, no DB calls, no global state inside them.
@@ -181,18 +190,30 @@ uv run wels-score <match_id> --checkpoint data/models/action_predictor_best.pt
 - After training a new checkpoint, run `wels-score` to refresh pre-computed predictions in DuckDB.
 
 ### Adding a dependency
+Python packages (`backend`, `ingestion`, `ml`):
 ```bash
 cd packages/<name> && uv add <package>
 ```
-For ingestion CV deps (torch, ultralytics): `uv add --optional cv <package>`
+For ingestion CV deps (torch, ultralytics): `uv add --optional cv <package>`.
+
+Frontend (`packages/frontend`, pnpm):
+```bash
+cd packages/frontend && pnpm add <package>        # runtime
+cd packages/frontend && pnpm add -D <package>     # dev
+```
+
 Or use the `/add-dep` skill.
 
 ### Configuration
-All packages use `pydantic-settings` with `WELS_` prefix:
+Python packages use `pydantic-settings` with `WELS_` prefix:
 ```bash
 export WELS_DEVICE=cuda
 export WELS_DUCKDB_PATH=data/matches.duckdb
-export WELS_BACKEND_URL=http://localhost:8000   # used by frontend
+```
+
+The frontend reads env vars through Vite with the `VITE_` prefix (available at `import.meta.env.VITE_*`). Put them in `packages/frontend/.env.local` (gitignored):
+```bash
+VITE_BACKEND_URL=http://localhost:8000
 ```
 
 ### Testing
@@ -204,13 +225,14 @@ export WELS_BACKEND_URL=http://localhost:8000   # used by frontend
 ## CI
 
 GitHub Actions runs on every PR across all four packages:
-1. Lint (ruff)
-2. Type check (ty, GitHub annotation format)
-3. Test (`pytest -m "not integration"`)
+1. Lint — ruff for Python, eslint for frontend
+2. Type check — ty (Python, GitHub annotation format) + tsc (frontend)
+3. Tests — `pytest -m "not integration"` for Python packages; the frontend gate is `pnpm build` (Vite + tsc as a single compile check) since there are no unit tests yet
 4. Posts a pass/fail summary comment on the PR
 
 Ingestion installs without the `[cv]` extras (no torch/ultralytics on CI).
 ML installs normally; torch runs on CPU on the GitHub runner and is cached between runs.
+Frontend installs with `pnpm install --frozen-lockfile`; the pnpm store is cached between runs via `actions/setup-node`.
 
 ## Available Claude Skills
 
@@ -232,8 +254,9 @@ Custom skills are defined under `.claude/commands/` and invocable as slash comma
 - **Pipeline modules are pure**: `pipeline/` functions take typed inputs, return typed outputs — no side effects. This makes them testable without a GPU.
 - **torch/ultralytics are optional in ingestion**: unit tests run without GPU deps; the `[cv]` group is only installed on machines that process video.
 - **Ingestion triggered as FastAPI BackgroundTask**: no separate worker queue. Sufficient for batch processing; can be extracted later if needed.
-- **Two separate FastAPI apps**: frontend and backend have independent venvs and ports.
-- **HTMX, not React/Vue**: no JavaScript build toolchain.
-- **uv over pip/Poetry**: faster installs, deterministic lockfiles.
-- **moon for task caching**: tasks only re-run when inputs change.
+- **Frontend and backend ship independently**: separate runtimes (Node vs Python), separate ports, separate dependency trees. Either side can be swapped without touching the other.
+- **React + Vite + Tailwind v4 + shadcn/ui on the frontend**: typed, accessible primitives; WELS brand tokens live in CSS variables and drive both shadcn components and WELS semantic classes (`.nav`, `.card`, `.page-header` from `src/styles/wels.css`).
+- **uv + pnpm for packages**: `uv` for Python, `pnpm` for the frontend — both are deterministic, both are fast.
+- **moon for task caching and toolchain provisioning**: tasks only re-run when inputs change; moon also installs Node + pnpm from `.moon/toolchain.yml` so contributors don't need to install them manually.
 - **ruff + ty, not black/mypy**: both written in Rust; order-of-magnitude faster.
+- **eslint + tsc for the frontend**: flat eslint config with `typescript-eslint` + `react-hooks` + `react-refresh`; `tsc -b --noEmit` for type-checking, Vite for bundling.

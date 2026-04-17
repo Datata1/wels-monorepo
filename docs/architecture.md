@@ -3,9 +3,9 @@
 ## System overview
 
 ```
-Browser ──(HTML + HTMX)──▶ Frontend (port 3000)
+Browser ──(HTTP + JSON)──▶ Frontend (port 3000, Vite + React)
                                 │
-                          httpx.AsyncClient
+                           fetch() / ky / axios
                                 │
                                 ▼
                           Backend API (port 8000)
@@ -97,7 +97,8 @@ Browser ──(HTML + HTMX)──▶ Frontend (port 3000)
 │  Frontend (port 3000)           │
 │  (packages/frontend)            │
 │                                 │
-│  Jinja2 templates + HTMX        │
+│  React 18 + Vite + Tailwind v4  │
+│  shadcn/ui primitives           │
 │  Match list, heatmap viewer,    │
 │  formation timeline             │
 └─────────────────────────────────┘
@@ -114,12 +115,14 @@ wels-monorepo/
 │   │       ├── config.py
 │   │       ├── models.py
 │   │       └── routes/
-│   ├── frontend/         # HTMX + Jinja2 server (port 3000)
-│   │   └── src/frontend/
-│   │       ├── app.py
-│   │       ├── routes/
-│   │       ├── static/css/
-│   │       └── templates/
+│   ├── frontend/         # React + Vite SPA (port 3000)
+│   │   ├── package.json
+│   │   ├── vite.config.ts
+│   │   ├── tsconfig*.json
+│   │   └── src/
+│   │       ├── main.tsx
+│   │       ├── app/            # App.tsx + view components + shadcn/ui
+│   │       └── styles/         # Tailwind v4 + shadcn theme + WELS tokens
 │   ├── ingestion/        # CV pipeline: video → DuckDB
 │   │   └── src/ingestion/
 │   │       ├── pipeline/     # detection, pose, team, court
@@ -165,19 +168,24 @@ Each package can evolve, be replaced, or be scaled independently.
 
 ## Design decisions
 
-### Two separate FastAPI apps
+### Frontend and backend are independently deployable
 
-Frontend and backend have independent venvs and ports. The frontend is a "thin BFF"
-(Backend for Frontend) that calls the real API over HTTP. Benefits:
+The React/Vite frontend and the FastAPI backend live in the same repo but ship
+separately: different runtimes (Node vs Python), different ports (3000 vs 8000),
+different dependency trees. Benefits:
 
 - No dependency conflicts between packages
-- Can be deployed and scaled separately
-- Frontend can be swapped for a different UI without changing the API
+- Each side can be deployed and scaled separately
+- Either side can be swapped without changing the other (as happened here — the
+  previous HTMX frontend was replaced without touching the backend contract)
 
-### HTMX, not React/Vue
+### React + Vite, not HTMX
 
-No JavaScript build toolchain. Dynamic UI is achieved via server-sent HTML fragments.
-HTMX attributes (`hx-get`, `hx-target`, `hx-swap`) trigger partial page updates.
+Dynamic UI is owned by the client. React 18 + shadcn/ui primitives give us
+accessible, well-typed components (Radix underneath). Tailwind CSS v4 via
+`@tailwindcss/vite` handles styling with zero PostCSS config. The WELS brand
+palette lives in CSS variables in `src/styles/theme.css` and is consumed by both
+shadcn primitives and the `wels.css` semantic classes.
 
 ### DuckDB, not PostgreSQL
 
@@ -204,10 +212,14 @@ Both are written in Rust — orders of magnitude faster. Maintained by the same 
 
 | Tool | Purpose | Config |
 |------|---------|--------|
-| **uv** | Package management, venvs | `pyproject.toml` per package |
+| **uv** | Python package management, venvs | `pyproject.toml` per Python package |
+| **pnpm** | Node package manager (frontend) | `packages/frontend/package.json` |
 | **ruff** | Linting + formatting | `ruff.toml` (root) |
 | **ty** | Type checking | `ty.toml` (root) |
 | **pytest** | Testing | `pyproject.toml` per package |
-| **moon** | Task runner (parallel, cached) | `.moon/` |
+| **moon** | Task runner (parallel, cached), installs Node + pnpm | `.moon/` |
+| **Vite + React + TypeScript** | Frontend stack | `packages/frontend/vite.config.ts`, `tsconfig*.json` |
+| **Tailwind CSS v4 + shadcn/ui** | Frontend styling / components | `packages/frontend/src/styles/` |
+| **eslint + tsc** | Frontend lint + typecheck | `packages/frontend/eslint.config.js`, `tsconfig*.json` |
 | **pre-commit** | Git hooks (ruff + ty) | `.pre-commit-config.yaml` |
 | **GitHub Actions** | CI (lint + typecheck + test) | `.github/workflows/` |

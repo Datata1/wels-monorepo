@@ -16,9 +16,3 @@ repos:
         language: system
         pass_filenames: false
         files: ^packages/backend/.*\.py$
-      - id: ty-frontend
-        name: ty typecheck frontend
-        entry: bash -c 'cd packages/frontend && uv run ty check --config-file ../../ty.toml src/'
-        language: system
-        pass_filenames: false
-        files: ^packages/frontend/.*\.py$
