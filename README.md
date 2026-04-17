@@ -45,17 +45,28 @@ wels-monorepo/
 
 | Requirement | Notes |
 |-------------|-------|
-| Python 3.12+ | |
-| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| [uv](https://docs.astral.sh/uv/) | Manages Python venvs and installs Python 3.12 automatically. |
 | Node + pnpm | Installed automatically by moon's toolchain — see `.moon/toolchain.yml`. |
 | NVIDIA GPU (CUDA 12.1+) | Required for video ingestion and ML training. CPU fallback available but slow. |
 
+No system Python is required — uv downloads and manages its own CPython builds.
+
 ## Quick start
 
-**Linux / macOS**
+**Linux / WSL (fresh machine)**
 ```bash
-make setup   # venvs, deps, moon, pre-commit hooks
-make dev     # backend + frontend + docs in parallel
+sh bootstrap.sh          # installs make, xz-utils, uv, and Python 3.12 — no system Python needed
+source ~/.local/bin/env  # activate uv in the current shell (only needed if uv was just installed)
+make setup               # venvs, deps, moon, pre-commit hooks
+make dev                 # backend + frontend + docs in parallel
+```
+
+**macOS**
+```bash
+# Install uv if not already present:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+make setup
+make dev
 ```
 
 **Windows**

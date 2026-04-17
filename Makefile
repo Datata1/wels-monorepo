@@ -1,4 +1,4 @@
-.PHONY: setup setup-backend setup-frontend setup-moon setup-hooks \
+.PHONY: setup setup-backend setup-frontend setup-moon setup-hooks bootstrap \
        dev run-backend run-frontend build-frontend \
        lint lint-backend lint-frontend \
        typecheck typecheck-backend typecheck-frontend \
@@ -34,9 +34,18 @@ endif
 
 MOON_URL     := https://github.com/moonrepo/moon/releases/$(MOON_VERSION)/download/moon_cli-$(MOON_PLATFORM).tar.xz
 
+HAS_UV := $(shell command -v uv 2>/dev/null)
+HAS_XZ := $(shell command -v xz 2>/dev/null)
+
+# bootstrap: install system-level prerequisites on a fresh WSL / Linux machine.
+# If 'make' itself is missing, run ./bootstrap.sh directly instead.
+bootstrap:
+	@sh bootstrap.sh
+
 setup: setup-backend setup-frontend setup-moon setup-hooks
 
 setup-backend:
+	uv python install 3.12
 	cd packages/backend && uv sync --all-extras
 
 setup-frontend: $(MOON_BIN)
@@ -49,6 +58,13 @@ setup-moon: $(MOON_BIN)
 
 $(MOON_BIN):
 	@mkdir -p tools
+ifeq ($(UNAME_S),Linux)
+ifeq ($(HAS_XZ),)
+	@echo "ERROR: xz-utils is required to download moon but was not found."
+	@echo "Run 'make bootstrap' first to install prerequisites."
+	@exit 1
+endif
+endif
 	@echo "Downloading moon for $(MOON_PLATFORM)..."
 	@curl -sL $(MOON_URL) | tar -xJf - -C tools --strip-components=1 "moon_cli-$(MOON_PLATFORM)/moon"
 	@chmod +x $(MOON_BIN)
