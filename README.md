@@ -61,6 +61,20 @@ make setup               # venvs, deps, moon, pre-commit hooks
 make dev                 # backend + frontend + docs in parallel
 ```
 
+if this error appears:
+```pnpm: command not found```
+
+do:
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install --lts
+nvm use --lts
+npm install -g pnpm
+pnpm -v
+```
+
+
 **macOS**
 ```bash
 # Install uv if not already present:
