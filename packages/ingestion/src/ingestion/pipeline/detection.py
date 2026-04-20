@@ -25,6 +25,11 @@ except ImportError:
 
 _PERSON_CLASS = 0  # COCO class ID
 
+try:
+    import ultralytics as _ultralytics  # noqa: F401
+    AVAILABLE: bool = True
+except ImportError:
+    AVAILABLE = False
 
 class PersonDetector:
     """YOLO11 + ByteTrack player detector."""
