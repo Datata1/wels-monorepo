@@ -8,8 +8,7 @@ class IngestionSettings(BaseSettings):
 
     # Model identifiers — resolved against models_dir if not absolute paths
     detection_model: str = "yolo11m.pt"
-    pose_model: str = "yolo11m-pose.pt"
-    ball_model: str | None = None  # custom fine-tuned ball model; falls back to detection_model
+    ball_model: str = "yolo11m.pt"  # generic COCO model (class 32) or a custom ball model
 
     # Detection thresholds
     detection_confidence: float = 0.3
@@ -17,13 +16,11 @@ class IngestionSettings(BaseSettings):
     max_persons: int = 20
     n_teams: int = 2
 
-    # Processing flags
-    skip_pose: bool = False
     device: str = "cuda"  # set to "cpu" on machines without a GPU
 
-    # Storage — paths are relative to the repo root (data/)
-    duckdb_path: Path = Path("data/matches.duckdb")
-    models_dir: Path = Path("data/models")
+    # Storage — paths are relative to the repo root
+    duckdb_path: Path = Path("data/output/duckdb/matches.duckdb")
+    models_dir: Path = Path("data/input/models")
 
     # Court calibration JSON file (optional — no court mapping if unset)
     calibration_path: Path | None = None

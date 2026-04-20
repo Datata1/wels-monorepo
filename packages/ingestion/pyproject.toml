@@ -40,4 +40,5 @@ testpaths = ["tests"]
 markers = [
     "integration: requires a real video file and GPU",
     "unit: isolated unit tests (default)",
+    "pipeline: end-to-end smoke test with synthetic data — no GPU required",
 ]

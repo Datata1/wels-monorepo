@@ -1,13 +1,12 @@
 """
-Player and ball detector.
+Person detector.
 
 Port target: CV-POC-Wels/pipeline/detector.py
 Key decisions made vs. POC:
   - Returns typed Detection dataclasses instead of raw dicts
-  - Ball detection is part of this class (not separate), selecting the highest-confidence
-    `sports ball` class detection from the same YOLO pass
   - track_id is assigned by ByteTrack (built into ultralytics); this class does not
     implement its own tracker
+  - Ball detection is a separate stage (see ball.py)
 """
 
 from __future__ import annotations
@@ -16,36 +15,38 @@ import numpy as np
 
 from ingestion.types import Detection
 
+try:
+    import ultralytics as _ultralytics  # noqa: F401
+    AVAILABLE: bool = True
+except ImportError:
+    AVAILABLE = False
 
-class Detector:
-    """YOLO11 + ByteTrack player and ball detector."""
+
+class PersonDetector:
+    """YOLO11 + ByteTrack player detector."""
 
     def __init__(
         self,
         model_path: str,
-        ball_model_path: str | None,
         confidence: float,
-        ball_confidence: float,
         max_persons: int,
         device: str,
     ) -> None:
         # TODO: port from CV-POC-Wels/pipeline/detector.py
         #   - load ultralytics YOLO model at model_path
-        #   - load optional custom ball model at ball_model_path (or reuse main model)
         #   - store thresholds and device
         raise NotImplementedError
 
-    def detect(self, frame: np.ndarray) -> tuple[list[Detection], Detection | None]:
+    def detect(self, frame: np.ndarray) -> list[Detection]:  # type: ignore[type-arg]
         """
-        Run detection + ByteTrack on one frame.
+        Run YOLO11 + ByteTrack on one frame.
 
         Returns:
-            players: tracked player detections (track_id is stable across frames)
-            ball:    highest-confidence ball detection, or None if not visible
+            Tracked player detections sorted by confidence (track_id is stable
+            across frames via ByteTrack).
         """
-        # TODO: port from CV-POC-Wels/pipeline/detector.py — Detector.process_frame
-        #   1. Run YOLO inference on frame (person class)
-        #   2. Apply ByteTrack to get stable track_ids
-        #   3. Run ball model (or same model, sports ball class)
-        #   4. Convert raw results → Detection dataclasses
+        # TODO: port from CV-POC-Wels/pipeline/detector.py — detect_and_track
+        #   1. Run YOLO inference with tracker="bytetrack.yaml", classes=[0] (person)
+        #   2. Parse boxes → Detection dataclasses
+        #   3. Sort by confidence descending, cap at max_persons
         raise NotImplementedError

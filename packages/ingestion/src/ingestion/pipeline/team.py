@@ -17,6 +17,8 @@ import numpy as np
 
 from ingestion.types import BoundingBox
 
+AVAILABLE: bool = True  # scikit-learn and opencv are core deps
+
 _UNKNOWN = "unknown"
 
 

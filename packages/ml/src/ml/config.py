@@ -7,8 +7,8 @@ class MLSettings(BaseSettings):
     model_config = {"env_prefix": "WELS_"}
 
     # Data
-    duckdb_path: Path = Path("data/matches.duckdb")
-    models_dir: Path = Path("data/models")
+    duckdb_path: Path = Path("data/output/duckdb/matches.duckdb")
+    models_dir: Path = Path("data/input/models")
 
     # Graph construction
     window_size: int = 25  # frames per training sample (1 second at 25 FPS)
