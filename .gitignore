@@ -52,3 +52,5 @@ data/models/
 .stfolder
 .stignore
 local-workspace/
+
+data/

@@ -10,7 +10,11 @@ Flow per video:
   5. Post-processing: compute velocities and ball-carrier flags via SQL
 
 The orchestrator is the only place that knows about all pipeline stages.
-Individual stages (detection, pose, team, court) have no knowledge of each other.
+Individual stages (detection, ball, team, court) have no knowledge of each other.
+
+Each stage declares AVAILABLE at module level; the orchestrator checks this flag
+before attempting construction. Stages that raise NotImplementedError (not yet
+ported) are silently skipped — the pipeline degrades gracefully rather than crash.
 """
 
 from __future__ import annotations
@@ -18,15 +22,23 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from ingestion.config import IngestionSettings
+from ingestion.pipeline import ball as _ball_mod
+from ingestion.pipeline import court as _court_mod
+from ingestion.pipeline import detection as _det_mod
+from ingestion.pipeline import team as _team_mod
+from ingestion.pipeline.ball import BallDetector
 from ingestion.pipeline.court import CourtMapper
-from ingestion.pipeline.detection import Detector
-from ingestion.pipeline.pose import PoseEstimator
+from ingestion.pipeline.detection import PersonDetector
 from ingestion.pipeline.team import TeamClassifier
 from ingestion.storage.schema import connect
 from ingestion.storage.writer import FrameWriter
-from ingestion.types import BallState, FrameState, PlayerState
+from ingestion.types import BallState, Detection, FrameState, PlayerState
 from ingestion.video import iter_frames
+from ingestion.visualization.annotator import FrameAnnotator
 
 logger = logging.getLogger(__name__)
 
@@ -35,58 +47,92 @@ class IngestionOrchestrator:
     def __init__(self, settings: IngestionSettings) -> None:
         self._settings = settings
 
-        self._detector = Detector(
-            model_path=settings.detection_model,
-            ball_model_path=settings.ball_model,
-            confidence=settings.detection_confidence,
-            ball_confidence=settings.ball_confidence,
-            max_persons=settings.max_persons,
-            device=settings.device,
-        )
+        self._person_detector: PersonDetector | None = None
+        if _det_mod.AVAILABLE:
+            try:
+                _det_path = settings.models_dir / settings.detection_model
+                _det_path.parent.mkdir(parents=True, exist_ok=True)
+                self._person_detector = PersonDetector(
+                    model_path=str(_det_path),
+                    confidence=settings.detection_confidence,
+                    max_persons=settings.max_persons,
+                    device=settings.device,
+                    imgsz=settings.detection_imgsz,
+                    half=settings.half,
+                )
+            except NotImplementedError:
+                logger.warning("PersonDetector: not yet ported — person detection skipped")
+        else:
+            logger.info("PersonDetector: ultralytics not installed — person detection skipped")
 
-        self._pose: PoseEstimator | None = None
-        if not settings.skip_pose:
-            self._pose = PoseEstimator(
-                model_path=settings.pose_model,
-                device=settings.device,
-            )
+        self._ball_detector: BallDetector | None = None
+        if _ball_mod.AVAILABLE:
+            try:
+                _ball_path = settings.models_dir / settings.ball_model
+                _ball_path.parent.mkdir(parents=True, exist_ok=True)
+                self._ball_detector = BallDetector(
+                    model_path=str(_ball_path),
+                    confidence=settings.ball_confidence,
+                    device=settings.device,
+                )
+            except NotImplementedError:
+                logger.warning("BallDetector: not yet ported — ball detection skipped")
+        else:
+            logger.info("BallDetector: ultralytics not installed — ball detection skipped")
 
-        self._team = TeamClassifier(n_teams=settings.n_teams)
+        self._team: TeamClassifier | None = None
+        if _team_mod.AVAILABLE:
+            try:
+                self._team = TeamClassifier(n_teams=settings.n_teams)
+            except NotImplementedError:
+                logger.warning("TeamClassifier: not yet ported — team stage skipped")
 
         self._court: CourtMapper | None = None
-        if settings.calibration_path is not None:
-            self._court = CourtMapper.from_file(settings.calibration_path)
+        if settings.calibration_path is not None and _court_mod.AVAILABLE:
+            try:
+                self._court = CourtMapper.from_file(settings.calibration_path)
+            except NotImplementedError:
+                logger.warning("CourtMapper: not yet ported — court stage skipped")
 
-    def run(self, video_path: Path, match_id: str) -> None:
+    def run(
+        self,
+        video_path: Path,
+        match_id: str,
+        output_video_path: Path | None = None,
+    ) -> None:
         """
         Process one video file end-to-end and write all results to DuckDB.
+
+        Args:
+            output_video_path: If provided, write an annotated copy of the video here.
 
         Raises ValueError if match_id already exists in the database.
         """
         settings = self._settings
         conn = connect(settings.duckdb_path)
 
-        # Guard: reject duplicate match_ids
         existing = conn.execute("SELECT 1 FROM matches WHERE match_id = ?", [match_id]).fetchone()
         if existing:
             raise ValueError(f"match_id '{match_id}' already exists in the database")
 
-        # Two-phase processing: warm-up → fit → main
         warmup_limit = settings.team_warmup_frames
 
-        logger.info("Phase 1: team classifier warm-up (%d frames)", warmup_limit)
-        for vf in iter_frames(video_path):
-            if vf.frame_id >= warmup_limit:
-                break
-            players_raw, _ = self._detector.detect(vf.frame)
-            for det in players_raw:
-                self._team.collect(vf.frame, det.bbox)
+        if self._person_detector is not None and self._team is not None:
+            logger.info("Phase 1: team classifier warm-up (%d frames)", warmup_limit)
+            try:
+                for vf in iter_frames(video_path):
+                    if vf.frame_id >= warmup_limit:
+                        break
+                    players_raw = self._person_detector.detect(vf.frame)
+                    for det in players_raw:
+                        self._team.collect(vf.frame, det.bbox)
+                self._team.fit()
+                logger.info("Team classifier fitted")
+            except NotImplementedError:
+                logger.warning("Team warmup skipped: stage not yet ported")
+        else:
+            logger.info("Phase 1: skipped (person detector or team classifier unavailable)")
 
-        self._team.fit()
-        logger.info("Team classifier fitted")
-
-        # Register the match now that we know fps/total_frames
-        # We need one more pass for metadata — read the first frame only
         meta = next(iter_frames(video_path))
         conn.execute(
             "INSERT INTO matches (match_id, video_path, fps, total_frames) VALUES (?,?,?,?)",
@@ -94,14 +140,26 @@ class IngestionOrchestrator:
         )
         conn.commit()
 
+        annotator = FrameAnnotator() if output_video_path is not None else None
+        video_writer = (
+            _open_video_writer(output_video_path, meta.fps, meta.frame)
+            if output_video_path is not None
+            else None
+        )
+
         logger.info("Phase 2: full pipeline (%d total frames)", meta.total_frames)
         with FrameWriter(conn, match_id) as writer:
             for vf in iter_frames(video_path):
                 frame_state = self._process_frame(vf.frame, vf.frame_id, vf.timestamp_s)
                 writer.write(frame_state)
+                if video_writer is not None and annotator is not None:
+                    video_writer.write(annotator.annotate(vf.frame, frame_state))
 
                 if vf.frame_id % 500 == 0:
                     logger.info("  frame %d / %d", vf.frame_id, vf.total_frames)
+
+        if video_writer is not None:
+            video_writer.release()
 
         logger.info("Phase 3: post-processing (velocities + ball carrier)")
         _compute_velocities(conn, match_id, meta.fps)
@@ -111,23 +169,38 @@ class IngestionOrchestrator:
         logger.info("Ingestion complete: %s", match_id)
 
     def _process_frame(self, frame: object, frame_id: int, timestamp_s: float) -> FrameState:
-        import numpy as np
-
         assert isinstance(frame, np.ndarray)
 
-        players_raw, ball_raw = self._detector.detect(frame)
+        players_raw: list[Detection] = []
+        if self._person_detector is not None:
+            try:
+                players_raw = self._person_detector.detect(frame)
+            except NotImplementedError:
+                pass
 
-        # Pose estimation (optional)
-        poses = None
-        if self._pose is not None and players_raw:
-            poses = self._pose.estimate(frame, players_raw)
+        ball_raw: Detection | None = None
+        if self._ball_detector is not None:
+            try:
+                ball_raw = self._ball_detector.detect(frame)
+            except NotImplementedError:
+                pass
 
-        # Assemble PlayerState for each detection
-        players = []
-        for i, det in enumerate(players_raw):
-            team = self._team.classify(frame, det.bbox)
-            court_pos = self._court.transform(det.bbox.foot) if self._court else None
-            pose = poses[i] if poses is not None else None
+        players: list[PlayerState] = []
+        for det in players_raw:
+            team = "unknown"
+            if self._team is not None:
+                try:
+                    team = self._team.classify(frame, det.bbox)
+                except NotImplementedError:
+                    pass
+
+            court_pos: tuple[float, float] | None = None
+            if self._court is not None:
+                try:
+                    court_pos = self._court.transform(det.bbox.foot)
+                except NotImplementedError:
+                    pass
+
             players.append(
                 PlayerState(
                     track_id=det.track_id,
@@ -135,18 +208,21 @@ class IngestionOrchestrator:
                     confidence=det.confidence,
                     team=team,
                     court_pos=court_pos,
-                    pose=pose,
                 )
             )
 
-        # Ball state
-        ball = None
+        ball: BallState | None = None
         if ball_raw is not None:
-            court_pos = self._court.transform(ball_raw.bbox.center) if self._court else None
+            ball_court_pos: tuple[float, float] | None = None
+            if self._court is not None:
+                try:
+                    ball_court_pos = self._court.transform(ball_raw.bbox.center)
+                except NotImplementedError:
+                    pass
             ball = BallState(
                 bbox=ball_raw.bbox,
                 confidence=ball_raw.confidence,
-                court_pos=court_pos,
+                court_pos=ball_court_pos,
             )
 
         return FrameState(
@@ -155,6 +231,16 @@ class IngestionOrchestrator:
             players=players,
             ball=ball,
         )
+
+
+def _open_video_writer(
+    path: Path,
+    fps: float,
+    reference_frame: np.ndarray,  # type: ignore[type-arg]
+) -> cv2.VideoWriter:
+    h, w = reference_frame.shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
+    return cv2.VideoWriter(str(path), fourcc, fps, (w, h))
 
 
 # ---------------------------------------------------------------------------

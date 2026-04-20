@@ -40,16 +40,6 @@ class BoundingBox:
 
 
 @dataclass(frozen=True)
-class Keypoint:
-    """Single COCO pose keypoint (17 per player)."""
-
-    x: float
-    y: float
-    z: float
-    visibility: float
-
-
-@dataclass(frozen=True)
 class Detection:
     """
     Raw output from the detector — no team, no court position, no pose.
@@ -73,7 +63,6 @@ class PlayerState:
     confidence: float
     team: str  # "A" | "B" | "unknown"
     court_pos: tuple[float, float] | None = None
-    pose: list[Keypoint] | None = None
     on_court: bool = True
 
     @property

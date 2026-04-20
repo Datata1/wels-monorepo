@@ -38,3 +38,9 @@ tasks:
     inputs:
       - "src/**/*.py"
       - "tests/**/*.py"
+
+  test-pipeline:
+    command: uv run pytest -m pipeline --tb=short -v
+    inputs:
+      - "src/**/*.py"
+      - "tests/**/*.py"

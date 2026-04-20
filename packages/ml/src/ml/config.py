@@ -2,13 +2,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
+# packages/ml/src/ml/config.py → go up 4 levels → repo root
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 class MLSettings(BaseSettings):
     model_config = {"env_prefix": "WELS_"}
 
-    # Data
-    duckdb_path: Path = Path("data/matches.duckdb")
-    models_dir: Path = Path("data/models")
+    # Data — absolute paths anchored to repo root
+    duckdb_path: Path = _REPO_ROOT / "data/output/duckdb/matches.duckdb"
+    models_dir: Path = _REPO_ROOT / "data/input/models"
 
     # Graph construction
     window_size: int = 25  # frames per training sample (1 second at 25 FPS)

@@ -28,10 +28,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("video", type=Path, help="Path to the match video file")
     p.add_argument("match_id", help="Unique match identifier (e.g. 2026-04-13_wels_vs_linz)")
-    p.add_argument("--no-pose", action="store_true", help="Skip pose estimation (faster)")
     p.add_argument("--device", default=None, help="Inference device: 'cuda' or 'cpu'")
     p.add_argument("--calibration", type=Path, default=None, help="Court calibration JSON file")
     p.add_argument("--db", type=Path, default=None, help="Override DuckDB path")
+    p.add_argument(
+        "--imgsz",
+        type=int,
+        default=None,
+        metavar="PX",
+        help="Detection input size in pixels (e.g. 640, 960, 1280). Smaller = faster.",
+    )
+    p.add_argument(
+        "--no-half",
+        action="store_true",
+        help="Disable FP16 inference (enabled by default on CUDA).",
+    )
+    p.add_argument(
+        "--output-video",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write annotated video with bounding boxes to this path (e.g. out.mp4)",
+    )
     p.add_argument("--verbose", "-v", action="store_true")
     return p
 
@@ -51,20 +69,22 @@ def main(argv: list[str] | None = None) -> None:
 
     # Override settings from CLI flags where provided
     overrides: dict[str, object] = {}
-    if args.no_pose:
-        overrides["skip_pose"] = True
     if args.device:
         overrides["device"] = args.device
     if args.calibration:
         overrides["calibration_path"] = args.calibration
     if args.db:
         overrides["duckdb_path"] = args.db
+    if args.imgsz:
+        overrides["detection_imgsz"] = args.imgsz
+    if args.no_half:
+        overrides["half"] = False
 
     settings = IngestionSettings(**overrides)  # type: ignore[arg-type]
     orchestrator = IngestionOrchestrator(settings)
 
     try:
-        orchestrator.run(args.video, args.match_id)
+        orchestrator.run(args.video, args.match_id, output_video_path=args.output_video)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

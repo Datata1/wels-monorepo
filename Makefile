@@ -3,12 +3,14 @@
        lint lint-backend lint-frontend \
        typecheck typecheck-backend typecheck-frontend \
        format format-backend \
-       test test-backend test-integration \
+       test test-backend test-integration test-pipeline \
+       explore-db \
        docs docs-build \
        stop clean
 
 MOON_VERSION     := latest
 MOON_BIN         := tools/moon
+DUCKDB_FILE      := data/output/duckdb/matches.duckdb
 
 PY_PACKAGES := packages/backend packages/ingestion packages/ml
 JS_PACKAGES := packages/frontend
@@ -118,6 +120,17 @@ test-backend:
 
 test-integration:
 	cd packages/backend && uv run pytest -m integration
+
+test-pipeline:
+	cd packages/ingestion && uv run pytest -m pipeline --tb=short -v
+
+explore-db:
+	@if ! command -v duckdb >/dev/null 2>&1; then \
+		echo "DuckDB CLI not found. Install it first:"; \
+		echo "  curl https://install.duckdb.org | sh"; \
+		exit 1; \
+	fi
+	duckdb $(DUCKDB_FILE) -ui
 
 docs:
 	cd packages/backend && uv run mkdocs serve -f ../../mkdocs.yml -a localhost:8080

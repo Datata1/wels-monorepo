@@ -14,7 +14,7 @@ Browser ──(HTTP + JSON)──> Frontend (port 3000, Vite + React)
                                  ▼
                            Backend API (port 8000)
                                  │
-                           data/matches.duckdb
+                           data/output/duckdb/matches.duckdb
                                  ▲
                           ┌──────┴───────┐
                    wels-ingest        wels-score
@@ -28,9 +28,9 @@ Browser ──(HTTP + JSON)──> Frontend (port 3000, Vite + React)
 
 | Package | Reads | Writes |
 |---------|-------|--------|
-| `ingestion` | video file | `data/matches.duckdb` (matches, frames, players, ball) |
-| `ml` | `data/matches.duckdb` | `data/matches.duckdb` (action_predictions, formations, possession_phases) + `data/models/*.pt` |
-| `backend` | `data/matches.duckdb` | HTTP responses |
+| `ingestion` | `data/input/videos/` | `data/output/duckdb/matches.duckdb` (matches, frames, players, ball) |
+| `ml` | `data/output/duckdb/matches.duckdb` | `data/output/duckdb/matches.duckdb` (action_predictions, formations, possession_phases) + `data/input/models/*.pt` |
+| `backend` | `data/output/duckdb/matches.duckdb` | HTTP responses |
 | `frontend` | backend HTTP | HTML responses |
 
 **Two-step data pipeline:**
@@ -80,9 +80,11 @@ wels-monorepo/
 │           ├── cli.py        # wels-score entry point
 │           └── config.py
 ├── data/                 # runtime data — not committed
-│   ├── matches.duckdb    # all match data
-│   ├── models/           # YOLO weights + trained checkpoints
-│   └── videos/           # recommended location for match recordings
+│   ├── input/
+│   │   ├── videos/       # match recordings (MP4)
+│   │   └── models/       # YOLO weights + trained checkpoints
+│   └── output/
+│       └── duckdb/       # matches.duckdb lives here
 ├── docs/                 # MkDocs documentation
 ├── .moon/                # Moon workspace config
 ├── .github/
@@ -104,7 +106,7 @@ wels-monorepo/
 | Data models | Pydantic v2 |
 | Config | pydantic-settings (`WELS_` prefix) |
 | HTTP client (Python) | httpx (async) |
-| Storage | **DuckDB** (`data/matches.duckdb`) |
+| Storage | **DuckDB** (`data/output/duckdb/matches.duckdb`) |
 | Object detection | **YOLO11** (ultralytics) + ByteTrack |
 | ML framework | **PyTorch** + **PyTorch Geometric** |
 | Python package manager | **uv** (not pip, not Poetry) |
@@ -150,7 +152,7 @@ uv run wels-train
 # Batch scoring (writes pre-computed predictions to DuckDB)
 cd packages/ml
 uv run wels-score <match_id>
-uv run wels-score <match_id> --checkpoint data/models/action_predictor_best.pt
+uv run wels-score <match_id> --checkpoint data/input/models/action_predictor_best.pt
 
 # Moon (parallel + cached)
 ./tools/moon run :lint
@@ -208,7 +210,7 @@ Or use the `/add-dep` skill.
 Python packages use `pydantic-settings` with `WELS_` prefix:
 ```bash
 export WELS_DEVICE=cuda
-export WELS_DUCKDB_PATH=data/matches.duckdb
+export WELS_DUCKDB_PATH=data/output/duckdb/matches.duckdb
 ```
 
 The frontend reads env vars through Vite with the `VITE_` prefix (available at `import.meta.env.VITE_*`). Put them in `packages/frontend/.env.local` (gitignored):

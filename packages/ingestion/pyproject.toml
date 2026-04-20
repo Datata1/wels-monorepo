@@ -15,9 +15,18 @@ dependencies = [
 # cv: GPU-heavy runtime deps — install on machines that will actually process video.
 # Unit tests (types, storage) work without these; the pipeline stubs enforce this boundary.
 cv = [
-    "torch>=2.1",
+    "torch>=2.1,<2.11",
     "ultralytics>=8.1",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -40,4 +49,5 @@ testpaths = ["tests"]
 markers = [
     "integration: requires a real video file and GPU",
     "unit: isolated unit tests (default)",
+    "pipeline: end-to-end smoke test with synthetic data — no GPU required",
 ]

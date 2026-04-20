@@ -2,7 +2,7 @@
 Training entry point: wels-train
 
 Usage:
-    wels-train [--db data/matches.duckdb] [--output data/models/action.pt] [--epochs 50]
+    wels-train [--db data/output/duckdb/matches.duckdb] [--output data/input/models/action.pt] [--epochs 50]
 """
 
 from __future__ import annotations
