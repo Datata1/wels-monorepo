@@ -5,6 +5,7 @@ description = "WELS Handball Analytics — Video ingestion and CV pipeline"
 requires-python = ">=3.12"
 dependencies = [
     "duckdb>=1.2",
+    "lapx[cv]>=0.9.4",
     "numpy>=1.26",
     "opencv-python>=4.9",
     "pydantic-settings>=2.0",
@@ -20,8 +21,12 @@ cv = [
 ]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu124" }
-torchvision = { index = "pytorch-cu124" }
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
+]
+torchvision = [
+    { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu124"
