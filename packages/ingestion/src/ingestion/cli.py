@@ -32,6 +32,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--calibration", type=Path, default=None, help="Court calibration JSON file")
     p.add_argument("--db", type=Path, default=None, help="Override DuckDB path")
     p.add_argument(
+        "--imgsz",
+        type=int,
+        default=None,
+        metavar="PX",
+        help="Detection input size in pixels (e.g. 640, 960, 1280). Smaller = faster.",
+    )
+    p.add_argument(
+        "--no-half",
+        action="store_true",
+        help="Disable FP16 inference (enabled by default on CUDA).",
+    )
+    p.add_argument(
         "--output-video",
         type=Path,
         default=None,
@@ -63,6 +75,10 @@ def main(argv: list[str] | None = None) -> None:
         overrides["calibration_path"] = args.calibration
     if args.db:
         overrides["duckdb_path"] = args.db
+    if args.imgsz:
+        overrides["detection_imgsz"] = args.imgsz
+    if args.no_half:
+        overrides["half"] = False
 
     settings = IngestionSettings(**overrides)  # type: ignore[arg-type]
     orchestrator = IngestionOrchestrator(settings)

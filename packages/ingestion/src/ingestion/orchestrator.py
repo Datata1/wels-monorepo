@@ -50,11 +50,15 @@ class IngestionOrchestrator:
         self._person_detector: PersonDetector | None = None
         if _det_mod.AVAILABLE:
             try:
+                _det_path = settings.models_dir / settings.detection_model
+                _det_path.parent.mkdir(parents=True, exist_ok=True)
                 self._person_detector = PersonDetector(
-                    model_path=settings.detection_model,
+                    model_path=str(_det_path),
                     confidence=settings.detection_confidence,
                     max_persons=settings.max_persons,
                     device=settings.device,
+                    imgsz=settings.detection_imgsz,
+                    half=settings.half,
                 )
             except NotImplementedError:
                 logger.warning("PersonDetector: not yet ported — person detection skipped")
@@ -64,8 +68,10 @@ class IngestionOrchestrator:
         self._ball_detector: BallDetector | None = None
         if _ball_mod.AVAILABLE:
             try:
+                _ball_path = settings.models_dir / settings.ball_model
+                _ball_path.parent.mkdir(parents=True, exist_ok=True)
                 self._ball_detector = BallDetector(
-                    model_path=settings.ball_model,
+                    model_path=str(_ball_path),
                     confidence=settings.ball_confidence,
                     device=settings.device,
                 )

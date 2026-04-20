@@ -497,6 +497,14 @@ uv run python -c "from ingestion.pipeline.ball import AVAILABLE; print('ball det
 
 ---
 
+### testing the pipeline
+
+run from root
+
+```sh
+uv run --project packages/ingestion wels-ingest data/input/videos/dev_test_clip.mp4 match_004 --output-video data/output/dev_test_annotated4.mp4 --no-half
+```
+
 ## Checklist for Submitting a Stage PR
 
 - [ ] `AVAILABLE` flag in place and evaluated at import time
