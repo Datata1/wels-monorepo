@@ -1,10 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Upload, BarChart3, Users, TrendingUp, Calendar, Clock, Target, Award, Search, Filter, Video, Activity } from 'lucide-react';
+import { Upload, BarChart3,Calendar, Clock, Search, Filter, Video, Activity } from 'lucide-react';
 import { Button } from './ui/button';
 import logoImg from '../../imports/Logo.png';
+import { fetchMatches, MatchMeta } from './api';
 
-interface MatchReport {
+
+interface DashboardProps {
+  onNewUpload: () => void;
+  onViewMatch: (matchId: string, data: any, fileName: string) => void;
+}
+
+type DashboardMatch = {
   id: string;
   fileName: string;
   date: string;
@@ -18,105 +25,20 @@ interface MatchReport {
     teamB: string;
     score: string;
   };
+};
+function mapApiMatchToDashboard(m: MatchMeta): DashboardMatch {
+  return {
+    id: m.match_id,
+    fileName: m.file_name,
+    date: m.date || '',
+    duration: m.duration || '',
+    playersDetected: 0, 
+    totalShots: 0,
+    successRate: 0,
+    thumbnail: `${`${import.meta.env.VITE_BACKEND_URL || ''}/api/v1/matches/${m.match_id}/thumbnail`}`,
+    teams: { teamA: '', teamB: '', score: '' },
+  };
 }
-
-interface DashboardProps {
-  onNewUpload: () => void;
-  onViewMatch: (matchId: string, data: any, fileName: string) => void;
-}
-
-const mockMatches: MatchReport[] = [
-  {
-    id: '1',
-    fileName: 'Heimspiel_vs_TSV_Mannheim.mp4',
-    date: '2026-04-15',
-    duration: '54:07',
-    playersDetected: 14,
-    totalShots: 42,
-    successRate: 67,
-    thumbnail: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Blau',
-      score: '28:24'
-    }
-  },
-  {
-    id: '2',
-    fileName: 'Auswärtsspiel_Rhein_Neckar.mp4',
-    date: '2026-04-12',
-    duration: '51:34',
-    playersDetected: 14,
-    totalShots: 38,
-    successRate: 63,
-    thumbnail: 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Grün',
-      teamB: 'Weiß',
-      score: '25:27'
-    }
-  },
-  {
-    id: '3',
-    fileName: 'Training_Taktik_Session.mp4',
-    date: '2026-04-10',
-    duration: '48:22',
-    playersDetected: 12,
-    totalShots: 31,
-    successRate: 71,
-    thumbnail: 'https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Gelb',
-      score: '22:19'
-    }
-  },
-  {
-    id: '4',
-    fileName: 'Pokalspiel_Viertelfinale.mp4',
-    date: '2026-04-08',
-    duration: '56:45',
-    playersDetected: 14,
-    totalShots: 47,
-    successRate: 64,
-    thumbnail: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Blau',
-      teamB: 'Schwarz',
-      score: '30:29'
-    }
-  },
-  {
-    id: '5',
-    fileName: 'Ligaspiel_HC_Stuttgart.mp4',
-    date: '2026-04-05',
-    duration: '52:18',
-    playersDetected: 14,
-    totalShots: 40,
-    successRate: 70,
-    thumbnail: 'https://images.unsplash.com/photo-1589487391730-58f20eb2c308?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Grün',
-      score: '28:25'
-    }
-  },
-  {
-    id: '6',
-    fileName: 'Derby_Lokalrivale.mp4',
-    date: '2026-04-01',
-    duration: '55:12',
-    playersDetected: 14,
-    totalShots: 44,
-    successRate: 66,
-    thumbnail: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Weiß',
-      teamB: 'Rot',
-      score: '29:28'
-    }
-  }
-];
 
 function generateMockAnalysis(): any {
   return {
@@ -196,18 +118,40 @@ const getTeamColor = (color: string): string => {
 };
 
 export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
+
+  const [matches, setMatches] = useState<DashboardMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const matches = await fetchMatches();
+        setMatches(matches.map(mapApiMatchToDashboard));
+        setError(null);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
 
-  const totalAnalyses = mockMatches.length;
-  const totalVideoMinutes = mockMatches.reduce((acc, m) => {
+  const totalAnalyses = matches.length;
+  const totalVideoMinutes = matches.reduce((acc, m) => {
     const [min, sec] = m.duration.split(':').map(Number);
     return acc + min + (sec / 60);
   }, 0);
-  const lastAnalysisDate = mockMatches.length > 0 ? mockMatches[0].date : '';
+  const lastAnalysisDate = matches.length > 0 ? matches[0].date : '';
 
   const filteredMatches = useMemo(() => {
-    let filtered = mockMatches.filter(match =>
+    const filtered = matches.filter(match =>
       match.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       match.teams.teamA.toLowerCase().includes(searchQuery.toLowerCase()) ||
       match.teams.teamB.toLowerCase().includes(searchQuery.toLowerCase())
@@ -222,7 +166,7 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
     });
 
     return filtered;
-  }, [searchQuery, sortBy]);
+  }, [matches, searchQuery, sortBy]);
 
   return (
     <div className="min-h-screen">
@@ -328,6 +272,7 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
             <div className="flex items-center gap-2">
               <Filter className="w-5 h-5 text-gray-600" />
               <select
+                aria-label="Sortierung auswählen"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'date' | 'name')}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white"
@@ -339,7 +284,15 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
           </div>
         </div>
 
-        {filteredMatches.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12">
+            <span className="text-gray-500 text-lg">Lade Matches…</span>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <span className="text-red-500 text-lg">{error}</span>
+          </div>
+        ) : filteredMatches.length === 0 ? (
           <div className="text-center py-12">
             <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">Keine Matches gefunden</p>
@@ -426,4 +379,4 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
       </motion.div>
     </div>
   );
-}
+};
