@@ -1,6 +1,23 @@
 import cv2
 import numpy as np
 
+"""Farb- und Belichtungskorrektur fuer Match-Videos.
+
+Dieses Modul arbeitet in zwei Schritten:
+1) Analyse: Sampling ueber das Video, um Kennzahlen (Helligkeit, Farbstich, Kontrast) zu sammeln.
+2) Verarbeitung: Pro Frame nur die noetigen Korrekturen anwenden.
+
+Typischer Aufruf in der Pipeline:
+    color_correction(input_path="input.mp4", output_path="output.mp4")
+
+Mit ROI (z. B. aus isolate_roi.py):
+    color_correction(
+        input_path="input.mp4",
+        output_path="output.mp4",
+        roi_bounds=(y_top, y_bottom),
+    )
+"""
+
 
 def _extract_analysis_frame(frame, roi_bounds=None):
     """Liefert den Frame-Bereich für die Analyse (optional ROI)."""
@@ -35,7 +52,11 @@ def _compute_frame_metrics(analysis_frame):
 def _build_analysis_report(
     total_frames, brightness_values, contrast_values, color_casts, local_brightness
 ):
-    """Aggregiert die gesammelten Sample-Metriken in einen Report."""
+    """Aggregiert die gesammelten Sample-Metriken in einen Report.
+
+    Der Report enthaelt neben Mittelwerten auch Entscheidungsflags
+    (z. B. needs_white_balance), die spaeter direkt die Verarbeitung steuern.
+    """
     report = {
         "total_frames": total_frames,
         "samples": len(brightness_values),
@@ -66,7 +87,11 @@ def _build_analysis_report(
 
 
 def _select_fixes(report):
-    """Leitet aus dem Report ab, welche Korrekturen angewendet werden sollen."""
+    """Leitet aus dem Report ab, welche Korrekturen angewendet werden sollen.
+
+    Die Rueckgabe ist eine geordnete Liste von Schritten, die in
+    _apply_selected_fixes nacheinander ausgefuehrt wird.
+    """
     fixes = []
     if report["needs_white_balance"]:
         fixes.append("white_balance")
@@ -78,7 +103,13 @@ def _select_fixes(report):
 
 
 def _apply_selected_fixes(frame, fixes, report, roi_bounds, flicker_factor):
-    """Wendet die ausgewählten Korrekturen auf genau einen Frame an."""
+    """Wendet die ausgewaehlten Korrekturen auf genau einen Frame an.
+
+    Reihenfolge ist wichtig:
+    1) White Balance (globale Farbkorrektur)
+    2) Flicker-Korrektur (zeitliche Helligkeitsstabilisierung)
+    3) CLAHE (lokale Kontrastanhebung)
+    """
     if "white_balance" in fixes:
         frame = correct_white_balance(frame, roi_bounds=roi_bounds)
 
@@ -118,6 +149,13 @@ def analyze_video(input_path, sample_interval=30, roi_bounds=None):
         sample_interval: Jeden N-ten Frame analysieren
         roi_bounds: Optional (y_top, y_bottom) um Weißabgleich nur auf ROI zu berechnen
                     Verhindert Überkorrektur durch dominante Trikotfarben/Publikum
+
+    Returns:
+        dict: Analysebericht mit Kennzahlen und Entscheidungsflags.
+
+    Aufruf:
+        report = analyze_video("input.mp4", sample_interval=30)
+        report = analyze_video("input.mp4", roi_bounds=(120, 900))
     """
     cap = cv2.VideoCapture(input_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -238,7 +276,18 @@ def apply_clahe(frame):
 
 
 def process_video(input_path, output_path, report, roi_bounds=None):
-    """Wendet nur die nötigen Korrekturen an."""
+    """Wendet nur die noetigen Korrekturen an und schreibt das Output-Video.
+
+    Args:
+        input_path: Pfad zum Input-Video.
+        output_path: Pfad fuer das korrigierte Output-Video.
+        report: Analysebericht aus analyze_video().
+        roi_bounds: Optional (y_top, y_bottom) fuer ROI-basierte Korrektur.
+
+    Aufruf:
+        report = analyze_video("input.mp4")
+        process_video("input.mp4", "output.mp4", report)
+    """
     fixes = _select_fixes(report)
 
     if not fixes:
@@ -271,6 +320,11 @@ def color_correction(input_path, output_path, roi_bounds=None):
         output_path: Pfad zum Output-Video
         roi_bounds: Optional (y_top, y_bottom) um Analyse/Korrektur auf ROI zu beschränken
                     (z.B. von isolate_roi.py)
+
+    Aufruf:
+        color_correction("input.mp4", "output.mp4")
+        color_correction("input.mp4", "output.mp4", roi_bounds=(120, 900))
     """
+    # Orchestriert den kompletten Ablauf: erst analysieren, dann gezielt korrigieren.
     report = analyze_video(input_path, roi_bounds=roi_bounds)
     process_video(input_path, output_path, report, roi_bounds=roi_bounds)

@@ -1,6 +1,19 @@
 import cv2
 import numpy as np
 
+"""ROI-Erkennung und Zuschnitt fuer Hallen-Videos.
+
+Dieses Modul arbeitet in zwei Schritten:
+1) ROI-Schaetzung: Aus mehreren Frames wird eine stabile vertikale ROI berechnet.
+2) Zuschnitt: Das Video wird auf diese ROI zugeschnitten gespeichert.
+
+Typischer Aufruf:
+    roi, roi_stats = isolate_roi("input.mp4", "cropped.mp4")
+
+Nur ROI berechnen (ohne Schreiben):
+    stable_roi, stats = get_stable_roi("input.mp4", num_samples=100)
+"""
+
 
 def _sample_regions(img_h):
     """Liefert die vertikalen Sample-Regionen für die Farbstatistik."""
@@ -166,6 +179,9 @@ def detect_court_roi(frame):
     Returns:
         tuple: (roi, court_mask, confidence_score)
                confidence_score: 0.0 - 1.0 (höher = bessere Erkennung)
+
+    Aufruf:
+        roi, mask, confidence = detect_court_roi(frame)
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     img_h, img_w = frame.shape[:2]
@@ -194,6 +210,9 @@ def get_stable_roi(input_path, num_samples=100):
 
     Returns:
         tuple: (stable_roi, roi_stats_dict)
+
+    Aufruf:
+        stable_roi, roi_stats = get_stable_roi("input.mp4", num_samples=120)
     """
     width, height, y_tops, y_bottoms, confidence_scores = _collect_roi_samples(
         input_path, num_samples
@@ -216,7 +235,17 @@ def get_stable_roi(input_path, num_samples=100):
 
 
 def apply_roi_to_video(input_path, output_path, roi):
-    """Schneidet das Video auf die ROI zu."""
+    """Schneidet das Video auf die ROI zu.
+
+    Args:
+        input_path: Pfad zum Input-Video.
+        output_path: Pfad fuer das zugeschnittene Output-Video.
+        roi: Tuple (x, y, w, h), typischerweise aus get_stable_roi().
+
+    Aufruf:
+        roi, _ = get_stable_roi("input.mp4")
+        apply_roi_to_video("input.mp4", "cropped.mp4", roi)
+    """
     cap = cv2.VideoCapture(input_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     # total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -243,6 +272,14 @@ def apply_roi_to_video(input_path, output_path, roi):
 
 
 def isolate_roi(input_path, output_path):
+    """Orchestriert ROI-Schaetzung und Video-Zuschnitt.
+
+    Returns:
+        tuple: (roi, roi_stats)
+
+    Aufruf:
+        roi, roi_stats = isolate_roi("input.mp4", "cropped.mp4")
+    """
     roi, roi_stats = get_stable_roi(input_path)
 
     apply_roi_to_video(input_path, output_path, roi)

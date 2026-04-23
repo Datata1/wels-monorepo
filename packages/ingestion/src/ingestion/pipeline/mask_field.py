@@ -1,6 +1,18 @@
 import cv2
 import numpy as np
 
+"""Spielfeld-Maskierung auf Basis von Linienerkennung.
+
+Hauptidee:
+1) Mehrere Linien-Detektionsmethoden pro Frame kombinieren (Voting).
+2) Daraus eine stabile Spielfeldmaske ableiten.
+3) Alles ausserhalb des Felds abdunkeln.
+
+Typischer Aufruf:
+    detector = CourtLineDetectorV3()
+    stable_mask = detector.apply_field_mask_to_video("input.mp4", "masked.mp4")
+"""
+
 
 class CourtLineDetectorV3:
     """
@@ -211,6 +223,9 @@ class CourtLineDetectorV3:
 
         Eine Linie wird nur akzeptiert wenn MEHRERE Methoden
         sie erkennen → sehr wenig Falsch-Positive.
+
+        Aufruf:
+            combined_mask, votes = detector.method_combined(frame)
         """
         masks = self._run_line_methods(frame)
         combined, votes = self._vote_line_masks(masks)
@@ -309,6 +324,10 @@ class CourtLineDetectorV3:
 
         Returns:
             (masked_frame, field_mask): abgedunkelter Frame + binäre Maske
+
+        Aufruf:
+            detector = CourtLineDetectorV3()
+            masked_frame, field_mask = detector.mask_field(frame, dim_factor=0.2)
         """
         combined_mask, _ = self.method_combined(frame)
         field_mask = self._build_field_mask_from_lines(combined_mask, frame.shape)
@@ -327,6 +346,10 @@ class CourtLineDetectorV3:
 
         Returns:
             stable_mask: Akkumulierte, stabile binäre Maske (uint8, 0/255)
+
+        Aufruf:
+            detector = CourtLineDetectorV3()
+            stable_mask = detector.get_stable_field_mask("input.mp4", num_samples=40)
         """
         cap = cv2.VideoCapture(input_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -375,6 +398,18 @@ class CourtLineDetectorV3:
             dim_factor:  Helligkeit außerhalb des Spielfelds (0.0 - 1.0)
             num_samples: Anzahl Stichproben für stabile Maske
             preview:     Vorschau auf 3 Frames anzeigen (cv2.imshow)
+
+        Returns:
+            stable_mask: Die fuer alle Frames verwendete stabile Spielfeldmaske.
+
+        Aufruf:
+            detector = CourtLineDetectorV3()
+            stable_mask = detector.apply_field_mask_to_video(
+                "input.mp4",
+                "masked.mp4",
+                dim_factor=0.15,
+                num_samples=30,
+            )
         """
         stable_mask = self.get_stable_field_mask(input_path, num_samples=num_samples)
         cap, out = self._open_video_writer(input_path, output_path)
