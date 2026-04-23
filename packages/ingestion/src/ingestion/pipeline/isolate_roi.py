@@ -1,5 +1,3 @@
-import argparse
-
 import cv2
 import numpy as np
 
@@ -250,15 +248,3 @@ def isolate_roi(input_path, output_path):
     apply_roi_to_video(input_path, output_path, roi)
 
     return roi, roi_stats
-
-
-def _parse_args():
-    parser = argparse.ArgumentParser(description="Isoliert das Spielfeld als ROI aus einem Video.")
-    parser.add_argument("input_path", help="Pfad zum Input-Video")
-    parser.add_argument("output_path", help="Pfad zum Output-Video")
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = _parse_args()
-    isolate_roi(args.input_path, args.output_path)
