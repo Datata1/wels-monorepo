@@ -1,0 +1,58 @@
+[project]
+name = "wels-ingestion"
+version = "0.1.0"
+description = "WELS Handball Analytics — Video ingestion and CV pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.2",
+    "lapx[cv]>=0.9.4",
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "pydantic-settings>=2.0",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+# cv: GPU-heavy runtime deps — install on machines that will actually process video.
+# Unit tests (types, storage) work without these; the pipeline stubs enforce this boundary.
+cv = [
+    "torch>=2.1,<2.11",
+    "ultralytics>=8.1",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
+]
+torchvision = [
+    { index = "pytorch-cu124", marker = "sys_platform != 'darwin'" }
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+]
+
+[project.scripts]
+wels-ingest = "ingestion.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ingestion"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: requires a real video file and GPU",
+    "unit: isolated unit tests (default)",
+    "pipeline: end-to-end smoke test with synthetic data — no GPU required",
+]

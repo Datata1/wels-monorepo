@@ -1,0 +1,1 @@
+If finetuning is needed, you can implement the training here. Make sure to export the training result metrics aswell, so that we can use it for documentation. Upload the best model to drive so that others can just download te weights. 

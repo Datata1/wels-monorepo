@@ -18,7 +18,7 @@ ignore = [
 ]
 
 [lint.isort]
-known-first-party = ["backend", "frontend"]
+known-first-party = ["backend", "frontend", "ingestion", "ml"]
 
 [format]
 quote-style = "double"
