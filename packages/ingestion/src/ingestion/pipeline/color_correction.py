@@ -153,11 +153,6 @@ def analyze_video(input_path, sample_interval=30, roi_bounds=None):
     )
 
 
-def print_report(report):
-    """Ermittelt empfohlene Korrekturen ohne Konsolenausgabe."""
-    return _select_fixes(report)
-
-
 def correct_white_balance(frame, roi_bounds=None):
     """
     Korrigiert Weißabgleich via Gray-World-Annahme.
@@ -278,5 +273,4 @@ def color_correction(input_path, output_path, roi_bounds=None):
                     (z.B. von isolate_roi.py)
     """
     report = analyze_video(input_path, roi_bounds=roi_bounds)
-    print_report(report)
     process_video(input_path, output_path, report, roi_bounds=roi_bounds)
