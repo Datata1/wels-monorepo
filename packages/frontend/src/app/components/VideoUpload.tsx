@@ -1,15 +1,57 @@
-import { Upload, Video } from 'lucide-react';
+import { Upload, Video, Loader2 } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { motion } from 'motion/react';
 
-interface VideoUploadProps {
-  onVideoUpload: (file: File) => void;
+interface UploadResponse {
+  match_id: string;
+  filename: string;
+  status: string;
+  message: string;
 }
+
+interface VideoUploadProps {
+  onVideoUpload: (file: File, matchId: string) => void;
+}
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const uploadToBackend = useCallback(async (file: File) => {
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${BACKEND_URL}/api/v1/videos/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
+      }
+
+      const data: UploadResponse = await response.json();
+      
+      // Pass file and match_id to parent
+      onVideoUpload(file, data.match_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed';
+      setUploadError(message);
+      console.error('Upload error:', error);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [onVideoUpload]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -29,16 +71,16 @@ export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
     const videoFile = files.find(file => file.type.startsWith('video/'));
     
     if (videoFile) {
-      onVideoUpload(videoFile);
+      uploadToBackend(videoFile);
     }
-  }, [onVideoUpload]);
+  }, [uploadToBackend]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onVideoUpload(file);
+      uploadToBackend(file);
     }
-  }, [onVideoUpload]);
+  }, [uploadToBackend]);
 
   return (
     <motion.div
@@ -79,18 +121,32 @@ export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
 
           <div className="flex gap-2 items-center text-sm text-gray-500 bg-sky-50 px-4 py-2 rounded-full border border-sky-200">
             <Video className="w-4 h-4" />
-            <span>MP4, AVI, MOV, MKV (max. 2GB)</span>
+            <span>MP4, AVI, MOV, MKV</span>
           </div>
 
           <label htmlFor="video-upload">
             <Button 
-              type="button" 
+              type="button"
+              disabled={isUploading}
               onClick={() => document.getElementById('video-upload')?.click()}
-              className="bg-gradient-to-r from-blue-900 via-sky-600 to-orange-500 hover:from-blue-800 hover:via-sky-500 hover:to-orange-600 text-white px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all"
+              className="bg-gradient-to-r from-blue-900 via-sky-600 to-orange-500 hover:from-blue-800 hover:via-sky-500 hover:to-orange-600 text-white px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Video auswählen
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Wird hochgeladen...
+                </>
+              ) : (
+                'Video auswählen'
+              )}
             </Button>
           </label>
+          
+          {uploadError && (
+            <div className="text-red-600 text-sm bg-red-50 px-4 py-2 rounded-lg border border-red-200">
+              {uploadError}
+            </div>
+          )}
           
           <input
             id="video-upload"
@@ -98,6 +154,7 @@ export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
             accept="video/*"
             className="hidden"
             onChange={handleFileInput}
+            disabled={isUploading}
           />
         </div>
       </Card>

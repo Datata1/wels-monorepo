@@ -1,8 +1,9 @@
-import { Users, Activity, Target, TrendingUp, MapPin, Clock, Award, Zap, Camera, Shield, Play, BarChart3, CheckCircle2, FileText } from 'lucide-react';
+import { Users, Activity, Target, TrendingUp, MapPin, Clock, Award, Zap, Camera, Shield, Play, BarChart3, CheckCircle2, FileText, Video, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
 import { motion } from 'motion/react';
+import { useState, useEffect } from 'react';
 
 interface AnalysisData {
   duration: number;
@@ -62,9 +63,99 @@ interface AnalysisData {
 interface AnalysisResultsProps {
   data: AnalysisData;
   videoName: string;
+  matchId?: string;
 }
 
-export function AnalysisResults({ data, videoName }: AnalysisResultsProps) {
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
+function OutputVideoTab({ matchId }: { matchId?: string }) {
+  const [videoPath, setVideoPath] = useState<string | null>(null);
+  const [status, setStatus] = useState<'loading' | 'processing' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    if (!matchId) {
+      setStatus('loading');
+      return;
+    }
+
+    const checkVideo = async () => {
+      setStatus('loading');
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/v1/videos/${matchId}/output`);
+        const result = await response.json();
+        
+        if (result.status === 'ready' && result.video_path) {
+          setVideoPath(result.video_path);
+          setStatus('ready');
+        } else {
+          setStatus('processing');
+          // Poll every 5 seconds
+          setTimeout(checkVideo, 5000);
+        }
+      } catch {
+        setStatus('error');
+      }
+    };
+
+    checkVideo();
+  }, [matchId]);
+
+  if (status === 'loading' || status === 'processing') {
+    return (
+      <Card className="p-8 shadow-xl border-2 border-sky-200">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="w-12 h-12 animate-spin text-sky-600 mb-4" />
+          <p className="text-lg text-gray-600">
+            {status === 'loading' ? 'Lade Video...' : 'Warte auf verarbeitetes Video...'}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Das Video wird nach der Pipeline-Verarbeitung verfügbar sein.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (status === 'error' || !videoPath) {
+    return (
+      <Card className="p-8 shadow-xl border-2 border-red-200">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Video className="w-12 h-12 text-red-400 mb-4" />
+          <p className="text-lg text-gray-600">Video nicht verfügbar</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Das Output-Video wurde noch nicht generiert.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  // Convert file path to URL for video player
+  const videoUrl = `http://localhost:8000/api/v1/videos/${matchId}/output/video`;
+
+  return (
+    <Card className="p-8 shadow-xl border-2 border-sky-200">
+      <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
+        <Video className="w-6 h-6 text-sky-600" />
+        Output Video
+      </h3>
+      <p className="text-gray-600 mb-6">
+        Das annotierte Video mit Bounding Boxes und Spieler-Tracking.
+      </p>
+      <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+        <video
+          controls
+          className="w-full h-full"
+          src={videoPath}
+        >
+          Ihr Browser unterstützt das Video-Element nicht.
+        </video>
+      </div>
+    </Card>
+  );
+}
+
+export function AnalysisResults({ data, videoName, matchId }: AnalysisResultsProps) {
   const shotAccuracy = ((data.successfulShots / data.totalShots) * 100).toFixed(1);
 
   const containerVariants = {
@@ -227,7 +318,7 @@ export function AnalysisResults({ data, videoName }: AnalysisResultsProps) {
       {/* Detailed Analysis Tabs */}
       <motion.div variants={itemVariants}>
         <Tabs defaultValue="quality" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 bg-gradient-to-r from-blue-100 to-orange-100 p-1 rounded-xl">
+          <TabsList className="grid w-full grid-cols-7 bg-gradient-to-r from-blue-100 to-orange-100 p-1 rounded-xl">
             <TabsTrigger value="quality" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md">
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Qualität
@@ -251,6 +342,10 @@ export function AnalysisResults({ data, videoName }: AnalysisResultsProps) {
             <TabsTrigger value="heatmap" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md">
               <MapPin className="w-4 h-4 mr-2" />
               Heatmap
+            </TabsTrigger>
+            <TabsTrigger value="output" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md">
+              <Video className="w-4 h-4 mr-2" />
+              Output Video
             </TabsTrigger>
           </TabsList>
 
@@ -740,6 +835,10 @@ export function AnalysisResults({ data, videoName }: AnalysisResultsProps) {
                 </div>
               </div>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="output" className="mt-6">
+            <OutputVideoTab matchId={matchId} />
           </TabsContent>
         </Tabs>
       </motion.div>
