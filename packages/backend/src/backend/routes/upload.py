@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
 # Configure paths - absolute paths from monorepo root
-MONOREPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+MONOREPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "input" / "videos"
 DATA_OUTPUT_VIDEOS = MONOREPO_ROOT / "data" / "output" / "videos"
 
@@ -23,9 +23,19 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
     output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
 
     try:
-        # Run wels-ingest with the match_id and output video flag
+        # Run wels-ingest from the ingestion package
         result = subprocess.run(
-            ["uv", "run", "wels-ingest", video_path, match_id, "--output-video", str(output_video)],
+            [
+                "uv",
+                "run",
+                "-p",
+                "wels-ingestion",
+                "wels-ingest",
+                video_path,
+                match_id,
+                "--output-video",
+                str(output_video),
+            ],
             cwd=str(MONOREPO_ROOT),
             capture_output=True,
             text=True,
