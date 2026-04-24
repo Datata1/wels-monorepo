@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/v1", tags=["api"])
 
 # Configure paths - absolute paths from monorepo root
 MONOREPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "input" / "videos"
+DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "videos"
 DATA_OUTPUT_VIDEOS = MONOREPO_ROOT / "data" / "output" / "videos"
 
 
