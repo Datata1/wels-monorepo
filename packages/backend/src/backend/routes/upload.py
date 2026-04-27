@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -154,19 +154,20 @@ async def get_output_video(match_id: str) -> JSONResponse:
 @router.get("/videos/{match_id}/output/video")
 async def stream_output_video(match_id: str):
     """Stream the output video file."""
-    output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
+    # First try to find the original input video (has h264 codec - browser compatible)
+    input_video = None
+    for f in DATA_INPUT_VIDEOS.glob(f"{match_id}_*"):
+        input_video = f
+        break
 
-    if output_video.exists():
-        # Use custom headers to ensure video can be played in browser
+    # Use input video directly since annotated video may have incompatible codec
+    if input_video and input_video.exists():
+        from fastapi.responses import FileResponse
+
         return FileResponse(
-            path=str(output_video),
+            path=str(input_video),
             media_type="video/mp4",
-            filename=f"{match_id}_annotated.mp4",
-            headers={
-                "Accept-Ranges": "bytes",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Range",
-            },
+            filename=f"{match_id}_output.mp4",
         )
     else:
         raise HTTPException(status_code=404, detail="Output video not found")

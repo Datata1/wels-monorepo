@@ -83,17 +83,21 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
       try {
         const response = await fetch(`${BACKEND_URL}/api/v1/videos/${matchId}/output`);
         const result = await response.json();
+        console.log("DEBUG: /output response:", result);
         
         if (result.status === 'ready') {
           // Use the streaming endpoint URL instead of local file path
-          setVideoPath(`${BACKEND_URL}/api/v1/videos/${matchId}/output/video`);
+          const url = `${BACKEND_URL}/api/v1/videos/${matchId}/output/video`;
+          console.log("DEBUG: Setting videoPath to:", url);
+          setVideoPath(url);
           setStatus('ready');
         } else {
           setStatus('processing');
           // Poll every 5 seconds
           setTimeout(checkVideo, 5000);
         }
-      } catch {
+      } catch (err) {
+        console.error("DEBUG: Error checking video:", err);
         setStatus('error');
       }
     };
@@ -134,6 +138,8 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
   // Convert file path to URL for video player
   const videoUrl = `http://localhost:8000/api/v1/videos/${matchId}/output/video`;
 
+  console.log("DEBUG OutputVideoTab: videoPath =", videoPath, "status =", status);
+
   return (
     <Card className="p-8 shadow-xl border-2 border-sky-200">
       <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
@@ -148,6 +154,26 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
           controls
           className="w-full h-full"
           src={videoPath}
+          onError={(e) => {
+            const target = e.target as HTMLVideoElement;
+            const error = target.error;
+            console.error("Video load error details:", {
+              error: error,
+              errorCode: error?.code,
+              errorMessage: error?.message,
+              networkState: target.networkState,
+              readyState: target.readyState,
+              src: target.src
+            });
+          }}
+          onLoadedMetadata={(e) => {
+            const target = e.target as HTMLVideoElement;
+            console.log("Video metadata loaded:", {
+              duration: target.duration,
+              width: target.videoWidth,
+              height: target.videoHeight
+            });
+          }}
         >
           Ihr Browser unterstützt das Video-Element nicht.
         </video>
