@@ -170,31 +170,22 @@ function App() {
         const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/v1/videos/${matchId}/output`);
         const data = await response.json();
         
-        // Update progress based on status
+        // Update progress based on actual status from backend
         if (data.status === 'ready') {
-          // Processing complete - fetch actual analysis data from backend
+          // Processing complete - output video is ready
           setProgress(100);
           setCurrentStep('Verarbeitung abgeschlossen!');
           
-          // For now, use mock data but in future would fetch from backend
+          // Go to results when output video is ready
           setTimeout(() => {
             setAnalysisData(generateMockAnalysis());
             setState('results');
           }, 500);
         } else {
-          // Still processing - increment progress
-          setProgress((prev) => {
-            const newProgress = Math.min(prev + Math.random() * 5 + 1, 95);
-            
-            // Update processing step based on progress
-            const stepIndex = Math.min(
-              Math.floor((newProgress / 100) * processingSteps.length),
-              processingSteps.length - 1
-            );
-            setCurrentStep(processingSteps[stepIndex]);
-            
-            return newProgress;
-          });
+          // Still processing - show waiting state
+          setCurrentStep('Pipeline läuft...');
+          // Fake progress for visual feedback only
+          setProgress((prev) => Math.min(prev + Math.random() * 3 + 1, 95));
         }
       } catch (error) {
         console.error('Error checking processing status:', error);
@@ -220,8 +211,8 @@ function App() {
       }
     };
 
-    // Poll every 5 minutes
-    const interval = setInterval(checkProcessingStatus, 5 * 60 * 1000);
+    // Poll every 10 seconds
+    const interval = setInterval(checkProcessingStatus, 10000);
     
     // Initial check
     checkProcessingStatus();

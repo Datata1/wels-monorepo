@@ -26,14 +26,19 @@ export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
     setIsUploading(true);
     setUploadError(null);
 
+    console.log("DEBUG: Starting upload, file:", file.name, "size:", file.size);
+
     try {
       const formData = new FormData();
       formData.append('file', file);
+      console.log("DEBUG: FormData created, file in formData:", formData.get('file'));
 
       const response = await fetch(`${BACKEND_URL}/api/v1/videos/upload`, {
         method: 'POST',
         body: formData,
       });
+
+      console.log("DEBUG: Response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -41,6 +46,7 @@ export function VideoUpload({ onVideoUpload }: VideoUploadProps) {
       }
 
       const data: UploadResponse = await response.json();
+      console.log("DEBUG: Upload response:", data);
       
       // Pass file and match_id to parent
       onVideoUpload(file, data.match_id);

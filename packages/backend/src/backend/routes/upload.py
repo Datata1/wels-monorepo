@@ -9,7 +9,9 @@ from fastapi.responses import FileResponse, JSONResponse
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
 # Configure paths - absolute paths from monorepo root
-MONOREPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+# upload.py is at: packages/backend/src/backend/routes/upload.py
+# Need 6 parents to get to monorepo root: routes -> backend -> src -> backend -> packages -> root
+MONOREPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
 DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "videos"
 DATA_OUTPUT_VIDEOS = MONOREPO_ROOT / "data" / "output" / "videos"
 
@@ -23,14 +25,37 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
     output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
 
     try:
-        # Run wels-ingest from the ingestion package
+        # Run wels-ingest from the ingestion package using Python module
+        # Need to use the ingestion venv Python which has cv2 and other dependencies
+        import os
+
+        env = os.environ.copy()
+        env.pop("VIRTUAL_ENV", None)  # Remove VIRTUAL_ENV to avoid conflicts
+
+        # Add ingestion src to PYTHONPATH (semicolon for Windows)
+        ingestion_src = str(MONOREPO_ROOT / "packages" / "ingestion" / "src")
+        current_pythonpath = env.get("PYTHONPATH", "")
+        if current_pythonpath:
+            env["PYTHONPATH"] = ingestion_src + ";" + current_pythonpath
+        else:
+            env["PYTHONPATH"] = ingestion_src
+
+        # Use the ingestion venv Python (has cv2 and other dependencies)
+        ingestion_python = (
+            MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "Scripts" / "python.exe"
+        )
+
+        # Debug: print the PYTHONPATH being used
+        print(f"DEBUG: PYTHONPATH={env['PYTHONPATH']}")
+        print(f"DEBUG: cwd={MONOREPO_ROOT}")
+        print(f"DEBUG: video={video_path}, match_id={match_id}")
+        print(f"DEBUG: python={ingestion_python}")
+
         result = subprocess.run(
             [
-                "uv",
-                "run",
-                "-p",
-                "wels-ingestion",
-                "wels-ingest",
+                str(ingestion_python),
+                "-m",
+                "ingestion.cli",
                 video_path,
                 match_id,
                 "--output-video",
@@ -39,10 +64,12 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
             cwd=str(MONOREPO_ROOT),
             capture_output=True,
             text=True,
+            env=env,
         )
         if result.returncode != 0:
             # Log error but don't fail the request
             print(f"Ingestion failed for {match_id}: {result.stderr}")
+            print(f"STDOUT: {result.stdout}")
     except Exception as e:
         print(f"Error running ingestion for {match_id}: {e}")
 
@@ -76,9 +103,16 @@ async def upload_video(
     file_path = DATA_INPUT_VIDEOS / safe_filename
 
     content = await file.read()
+    print(f"DEBUG: Upload - file={file.filename}, size={len(content)} bytes")
 
     with open(file_path, "wb") as f:
         f.write(content)
+
+    # Verify file was written
+    import os
+
+    file_size = os.path.getsize(file_path)
+    print(f"DEBUG: Written file size: {file_size} bytes")
 
     # Start ingestion pipeline in a background thread
     thread = threading.Thread(target=run_ingestion_pipeline, args=(match_id, str(file_path)))
@@ -123,10 +157,16 @@ async def stream_output_video(match_id: str):
     output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
 
     if output_video.exists():
+        # Use custom headers to ensure video can be played in browser
         return FileResponse(
             path=str(output_video),
             media_type="video/mp4",
             filename=f"{match_id}_annotated.mp4",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Range",
+            },
         )
     else:
         raise HTTPException(status_code=404, detail="Output video not found")

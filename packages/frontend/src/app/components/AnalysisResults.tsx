@@ -84,8 +84,9 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
         const response = await fetch(`${BACKEND_URL}/api/v1/videos/${matchId}/output`);
         const result = await response.json();
         
-        if (result.status === 'ready' && result.video_path) {
-          setVideoPath(result.video_path);
+        if (result.status === 'ready') {
+          // Use the streaming endpoint URL instead of local file path
+          setVideoPath(`${BACKEND_URL}/api/v1/videos/${matchId}/output/video`);
           setStatus('ready');
         } else {
           setStatus('processing');
