@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Upload, BarChart3,Calendar, Clock, Search, Filter, Video, Activity } from 'lucide-react';
 import { Button } from './ui/button';
 import logoImg from '../../imports/Logo.png';
-import { fetchMatches, MatchMeta } from './api';
+import { fetchMatches, MatchMeta, MatchStatus } from './api';
 
 
 interface DashboardProps {
@@ -16,6 +16,7 @@ type DashboardMatch = {
   fileName: string;
   date: string;
   duration: string;
+  status: MatchStatus;
   playersDetected: number;
   totalShots: number;
   successRate: number;
@@ -29,9 +30,10 @@ type DashboardMatch = {
 function mapApiMatchToDashboard(m: MatchMeta): DashboardMatch {
   return {
     id: m.match_id,
-    fileName: m.file_name,
+    fileName: m.file_name || m.match_id,
     date: m.date || '',
     duration: m.duration || '',
+    status: m.status,
     playersDetected: 0, 
     totalShots: 0,
     successRate: 0,
@@ -117,6 +119,39 @@ const getTeamColor = (color: string): string => {
   return colorMap[color] || 'bg-gray-500';
 };
 
+function StatusBadge({ status }: { status: MatchStatus }) {
+  switch (status) {
+    case 'done':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          Fertig
+        </span>
+      );
+    case 'processing':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Verarbeitung
+        </span>
+      );
+    case 'failed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          Fehlgeschlagen
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+          Unbekannt
+        </span>
+      );
+  }
+}
+
 export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
 
   const [matches, setMatches] = useState<DashboardMatch[]>([]);
@@ -138,6 +173,18 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
     };
 
     fetchData();
+
+    // Auto-refresh every 10s so processing status updates are visible
+    const interval = setInterval(async () => {
+      try {
+        const matches = await fetchMatches();
+        setMatches(matches.map(mapApiMatchToDashboard));
+      } catch {
+        // Silently ignore refresh errors
+      }
+    }, 10_000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -300,31 +347,57 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMatches.map((match, index) => (
+            {filteredMatches.map((match, index) => {
+            const isClickable = match.status === 'done';
+            return (
             <motion.div
               key={match.id}
-              className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer group"
-              onClick={() => onViewMatch(match.id, generateMockAnalysis(), match.fileName)}
+              className={`bg-white rounded-xl shadow-lg overflow-hidden transition-all ${
+                isClickable ? 'hover:shadow-2xl cursor-pointer group' : 'opacity-80'
+              }`}
+              onClick={() => isClickable && onViewMatch(match.id, generateMockAnalysis(), match.fileName)}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.3 + index * 0.1 }}
-              whileHover={{ scale: 1.02 }}
+              whileHover={isClickable ? { scale: 1.02 } : undefined}
             >
               {/* Thumbnail */}
               <div className="relative h-40 overflow-hidden bg-gradient-to-br from-blue-900 to-sky-600">
-                <img
-                  src={match.thumbnail}
-                  alt={match.fileName}
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
-                />
+                {match.status === 'done' ? (
+                  <img
+                    src={match.thumbnail}
+                    alt={match.fileName}
+                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    {match.status === 'processing' && (
+                      <div className="text-white/70 text-center">
+                        <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-2" />
+                        <span className="text-sm">Wird verarbeitet…</span>
+                      </div>
+                    )}
+                    {match.status === 'failed' && (
+                      <div className="text-red-200 text-center">
+                        <span className="text-3xl">✕</span>
+                        <p className="text-sm mt-1">Verarbeitung fehlgeschlagen</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                <div className="absolute top-3 right-3">
+                  <StatusBadge status={match.status} />
+                </div>
                 <div className="absolute bottom-3 left-3 right-3">
                   <p className="text-white font-semibold text-sm truncate">{match.fileName}</p>
                   <div className="flex items-center gap-3 mt-1 text-white/90 text-xs">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {match.duration}
-                    </span>
+                    {match.duration && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {match.duration}
+                      </span>
+                    )}
                     <span className="font-bold">{match.teams.score}</span>
                   </div>
                 </div>
@@ -340,30 +413,47 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
                     <div className={`w-3 h-3 rounded-full ${getTeamColor(match.teams.teamB)}`}></div>
                     <span className="text-sm text-gray-700">{match.teams.teamB}</span>
                   </div>
-                  <span className="text-xs text-gray-500">{new Date(match.date).toLocaleDateString('de-DE')}</span>
+                  <span className="text-xs text-gray-500">{match.date ? new Date(match.date).toLocaleDateString('de-DE') : ''}</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Spieler</p>
-                    <p className="text-sm font-semibold text-gray-900">{match.playersDetected}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Würfe</p>
-                    <p className="text-sm font-semibold text-gray-900">{match.totalShots}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Quote</p>
-                    <p className="text-sm font-semibold text-green-600">{match.successRate}%</p>
-                  </div>
-                </div>
+                {match.status === 'done' && (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Spieler</p>
+                        <p className="text-sm font-semibold text-gray-900">{match.playersDetected}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Würfe</p>
+                        <p className="text-sm font-semibold text-gray-900">{match.totalShots}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Quote</p>
+                        <p className="text-sm font-semibold text-green-600">{match.successRate}%</p>
+                      </div>
+                    </div>
 
-                <div className="mt-4 flex items-center justify-center text-sm text-sky-600 group-hover:text-sky-700 font-medium">
-                  Analyse öffnen →
-                </div>
+                    <div className="mt-4 flex items-center justify-center text-sm text-sky-600 group-hover:text-sky-700 font-medium">
+                      Analyse öffnen →
+                    </div>
+                  </>
+                )}
+
+                {match.status === 'processing' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-center text-sm text-amber-600">
+                    Pipeline läuft…
+                  </div>
+                )}
+
+                {match.status === 'failed' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-center text-sm text-red-600">
+                    Verarbeitung fehlgeschlagen
+                  </div>
+                )}
               </div>
             </motion.div>
-            ))}
+            );
+            })}
           </div>
         )}
       </motion.div>

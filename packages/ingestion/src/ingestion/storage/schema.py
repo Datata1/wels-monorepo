@@ -5,9 +5,13 @@ All CREATE TABLE statements live here. Call connect() to get a connection
 with the schema already applied — safe to call multiple times (IF NOT EXISTS).
 """
 
+import logging
+import time
 from pathlib import Path
 
 import duckdb
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS matches (
@@ -81,15 +85,37 @@ CREATE INDEX IF NOT EXISTS idx_labels_action       ON action_labels (action);
 """
 
 
-def connect(db_path: Path, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+def connect(
+    db_path: Path,
+    read_only: bool = False,
+    retries: int = 10,
+    delay: float = 2.0,
+) -> duckdb.DuckDBPyConnection:
     """
     Open (or create) the DuckDB database and apply the schema.
 
     Creates parent directories if needed. Safe to call multiple times.
+    Retries on IOException (lock conflict with another process, e.g. the backend).
     """
     if not read_only:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(db_path), read_only=read_only)
-    if not read_only:
-        conn.execute(_SCHEMA_SQL)
-    return conn
+
+    last_error: duckdb.IOException | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            conn = duckdb.connect(str(db_path), read_only=read_only)
+            if not read_only:
+                conn.execute(_SCHEMA_SQL)
+            return conn
+        except duckdb.IOException as exc:
+            last_error = exc
+            if attempt < retries:
+                logger.warning(
+                    "DuckDB lock conflict (attempt %d/%d), retrying in %.1fs…",
+                    attempt,
+                    retries,
+                    delay,
+                )
+                time.sleep(delay)
+
+    raise last_error  # type: ignore[misc]

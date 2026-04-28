@@ -152,16 +152,12 @@ function App() {
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
-  // Handle video upload and automatically start processing
-  const handleVideoUpload = (file: File, newMatchId: string) => {
-    setVideoFile(file);
-    setMatchId(newMatchId);
-    setState('processing');
-    setProgress(0);
-    setCurrentStep('Video wird hochgeladen...');
+  // Handle video upload — go back to dashboard so user sees status there
+  const handleVideoUpload = (_file: File, _newMatchId: string) => {
+    setState('dashboard');
   };
 
-  // Poll backend for actual processing status
+  // Poll backend for actual processing status (used when viewing a match from the dashboard)
   useEffect(() => {
     if (state !== 'processing' || !matchId) return;
 
@@ -170,53 +166,28 @@ function App() {
         const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/v1/videos/${matchId}/output`);
         const data = await response.json();
         
-        // Update progress based on actual status from backend
         if (data.status === 'ready') {
-          // Processing complete - output video is ready
           setProgress(100);
           setCurrentStep('Verarbeitung abgeschlossen!');
           
-          // Go to results when output video is ready
           setTimeout(() => {
             setAnalysisData(generateMockAnalysis());
             setState('results');
           }, 500);
+        } else if (data.status === 'failed') {
+          setCurrentStep('Verarbeitung fehlgeschlagen.');
+          setProgress(0);
         } else {
-          // Still processing - show waiting state
           setCurrentStep('Pipeline läuft...');
-          // Fake progress for visual feedback only
           setProgress((prev) => Math.min(prev + Math.random() * 3 + 1, 95));
         }
       } catch (error) {
         console.error('Error checking processing status:', error);
-        // Fall back to simulation if backend is not ready
-        setProgress((prev) => {
-          const newProgress = Math.min(prev + Math.random() * 8 + 2, 100);
-          
-          const stepIndex = Math.min(
-            Math.floor((newProgress / 100) * processingSteps.length),
-            processingSteps.length - 1
-          );
-          setCurrentStep(processingSteps[stepIndex]);
-
-          if (newProgress >= 100) {
-            setTimeout(() => {
-              setAnalysisData(generateMockAnalysis());
-              setState('results');
-            }, 500);
-          }
-
-          return newProgress;
-        });
       }
     };
 
-    // Poll every 10 seconds
     const interval = setInterval(checkProcessingStatus, 10000);
-    
-    // Initial check
     checkProcessingStatus();
-
     return () => clearInterval(interval);
   }, [state, matchId]);
 
@@ -234,8 +205,9 @@ function App() {
     setState('upload');
   };
 
-  const handleViewMatch = (matchId: string, data: AnalysisData, fileName: string) => {
-    setSelectedMatchId(matchId);
+  const handleViewMatch = (id: string, data: AnalysisData, fileName: string) => {
+    setSelectedMatchId(id);
+    setMatchId(id);
     setAnalysisData(data);
     setVideoFile(new File([], fileName));
     setState('results');

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Response
 
 from backend.config import settings
 from backend.db import query_duckdb
+from backend.status import all_statuses, read_status
 from backend.types import MatchMeta
 
 THUMBNAIL_FRAME_INDEX = 42
@@ -45,15 +46,16 @@ def extract_frame_as_jpeg(video_path: Path, frame_index: int) -> bytes:
 
 @router.get("/matches", response_model=list[MatchMeta])
 def list_matches():
-    """Returns all matches that exist in DuckDB and as video file."""
+    """Returns all matches — both completed (from DuckDB) and in-progress (from status files)."""
     rows = list(query_duckdb("SELECT * FROM matches"))
-    result = []
+    result: list[MatchMeta] = []
+    seen_ids: set[str] = set()
 
     for row in rows:
         video_path = get_absolute_video_path(row["video_path"])
 
         if not video_path.exists():
-            logger.warning(f"Video file missing for match_id {row['match_id']} at {video_path}")
+            logger.debug("Video file missing for match_id %s at %s", row["match_id"], video_path)
             continue
 
         fps = row.get("fps") or 1.0
@@ -61,7 +63,9 @@ def list_matches():
         mins, secs = divmod(total_seconds, 60)
 
         date_str = row["ingested_at"].isoformat() if row.get("ingested_at") else None
+        status = read_status(row["match_id"])
 
+        seen_ids.add(row["match_id"])
         result.append(
             MatchMeta(
                 match_id=row["match_id"],
@@ -71,8 +75,26 @@ def list_matches():
                 total_frames=row["total_frames"],
                 duration=f"{mins:02d}:{secs:02d}",
                 ingested_at=date_str,
+                status=status,
             )
         )
+
+    # Surface matches that have a status file but aren't in DuckDB yet
+    # (e.g. still processing, or failed before DuckDB write)
+    for match_id, status in all_statuses().items():
+        if match_id in seen_ids:
+            continue
+        result.append(
+            MatchMeta(
+                match_id=match_id,
+                file_name="",
+                video_path="",
+                fps=0.0,
+                total_frames=0,
+                status=status,
+            )
+        )
+
     return result
 
 

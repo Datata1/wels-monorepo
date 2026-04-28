@@ -19,6 +19,7 @@ ported) are silently skipped — the pipeline degrades gracefully rather than cr
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -141,11 +142,16 @@ class IngestionOrchestrator:
         conn.commit()
 
         annotator = FrameAnnotator() if output_video_path is not None else None
-        video_writer = (
-            _open_video_writer(output_video_path, meta.fps, meta.frame)
-            if output_video_path is not None
-            else None
-        )
+        video_writer: cv2.VideoWriter | None = None
+        if output_video_path is not None:
+            video_writer = _open_video_writer(output_video_path, meta.fps, meta.frame)
+            if not video_writer.isOpened():
+                logger.warning(
+                    "VideoWriter could not be opened for %s — annotated video will not be written",
+                    output_video_path,
+                )
+                video_writer = None
+                annotator = None
 
         logger.info("Phase 2: full pipeline (%d total frames)", meta.total_frames)
         with FrameWriter(conn, match_id) as writer:
@@ -155,7 +161,7 @@ class IngestionOrchestrator:
                 if video_writer is not None and annotator is not None:
                     video_writer.write(annotator.annotate(vf.frame, frame_state))
 
-                if vf.frame_id % 500 == 0:
+                if vf.frame_id % 1 == 0:
                     logger.info("  frame %d / %d", vf.frame_id, vf.total_frames)
 
         if video_writer is not None:
@@ -173,33 +179,25 @@ class IngestionOrchestrator:
 
         players_raw: list[Detection] = []
         if self._person_detector is not None:
-            try:
+            with contextlib.suppress(NotImplementedError):
                 players_raw = self._person_detector.detect(frame)
-            except NotImplementedError:
-                pass
 
         ball_raw: Detection | None = None
         if self._ball_detector is not None:
-            try:
+            with contextlib.suppress(NotImplementedError):
                 ball_raw = self._ball_detector.detect(frame)
-            except NotImplementedError:
-                pass
 
         players: list[PlayerState] = []
         for det in players_raw:
             team = "unknown"
             if self._team is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     team = self._team.classify(frame, det.bbox)
-                except NotImplementedError:
-                    pass
 
             court_pos: tuple[float, float] | None = None
             if self._court is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     court_pos = self._court.transform(det.bbox.foot)
-                except NotImplementedError:
-                    pass
 
             players.append(
                 PlayerState(
@@ -215,10 +213,8 @@ class IngestionOrchestrator:
         if ball_raw is not None:
             ball_court_pos: tuple[float, float] | None = None
             if self._court is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     ball_court_pos = self._court.transform(ball_raw.bbox.center)
-                except NotImplementedError:
-                    pass
             ball = BallState(
                 bbox=ball_raw.bbox,
                 confidence=ball_raw.confidence,
@@ -238,8 +234,12 @@ def _open_video_writer(
     fps: float,
     reference_frame: np.ndarray,  # type: ignore[type-arg]
 ) -> cv2.VideoWriter:
+    import sys
+
     h, w = reference_frame.shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
+    # avc1 = H.264, browser-compatible on macOS; mp4v is a fallback for Linux
+    fourcc_str = "avc1" if sys.platform == "darwin" else "mp4v"
+    fourcc = cv2.VideoWriter_fourcc(*fourcc_str)  # type: ignore[attr-defined]
     return cv2.VideoWriter(str(path), fourcc, fps, (w, h))
 
 
