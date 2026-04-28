@@ -136,7 +136,7 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
   }
 
   // Convert file path to URL for video player
-  const videoUrl = `http://localhost:8000/api/v1/videos/${matchId}/output/video`;
+  const videoUrl = videoPath;
 
   console.log("DEBUG OutputVideoTab: videoPath =", videoPath, "status =", status);
 

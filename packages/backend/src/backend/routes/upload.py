@@ -38,6 +38,8 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
         match_id,
         "--output-video",
         str(output_video),
+        "--imgsz",
+        "640",
     ]
     if sys.platform == "darwin":
         cmd += ["--device", "cpu"]

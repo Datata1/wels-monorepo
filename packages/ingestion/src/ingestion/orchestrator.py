@@ -166,6 +166,8 @@ class IngestionOrchestrator:
 
         if video_writer is not None:
             video_writer.release()
+            assert output_video_path is not None
+            _ensure_h264(output_video_path)
 
         logger.info("Phase 3: post-processing (velocities + ball carrier)")
         _compute_velocities(conn, match_id, meta.fps)
@@ -234,13 +236,72 @@ def _open_video_writer(
     fps: float,
     reference_frame: np.ndarray,  # type: ignore[type-arg]
 ) -> cv2.VideoWriter:
-    import sys
-
     h, w = reference_frame.shape[:2]
-    # avc1 = H.264, browser-compatible on macOS; mp4v is a fallback for Linux
-    fourcc_str = "avc1" if sys.platform == "darwin" else "mp4v"
-    fourcc = cv2.VideoWriter_fourcc(*fourcc_str)  # type: ignore[attr-defined]
-    return cv2.VideoWriter(str(path), fourcc, fps, (w, h))
+    # Try H.264 first (browser-compatible), fall back to mp4v.
+    # mp4v (MPEG-4 Part 2) is not playable in browsers — _ensure_h264()
+    # will transcode it after the pipeline finishes.
+    for fourcc_str in ("avc1", "x264", "mp4v"):
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_str)  # type: ignore[attr-defined]
+        writer = cv2.VideoWriter(str(path), fourcc, fps, (w, h))
+        if writer.isOpened():
+            return writer
+    # Last resort: return the (possibly broken) writer so caller can detect it
+    return writer
+
+
+def _ensure_h264(path: Path) -> None:
+    """Re-encode to H.264 via ffmpeg if the file is not already H.264."""
+    import shutil
+    import subprocess
+
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    codec = result.stdout.strip()
+    if codec in ("h264", ""):
+        return  # already H.264 or probe failed — nothing to do
+
+    logger.info("Transcoding %s from %s to H.264 for browser playback", path.name, codec)
+    tmp = path.with_suffix(".tmp.mp4")
+    ret = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(tmp),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if ret.returncode == 0 and tmp.exists():
+        shutil.move(str(tmp), str(path))
+    else:
+        logger.warning("ffmpeg transcode failed (exit %d): %s", ret.returncode, ret.stderr[:500])
+        tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +328,16 @@ def _compute_velocities(conn: object, match_id: str, fps: float) -> None:
                 match_id,
                 frame_id,
                 track_id,
-                (court_x - LAG(court_x) OVER w)
-                    / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ? AS vx,
-                (court_y - LAG(court_y) OVER w)
-                    / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ? AS vy
+                COALESCE(
+                    (court_x - LAG(court_x) OVER w)
+                        / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ?,
+                    0
+                ) AS vx,
+                COALESCE(
+                    (court_y - LAG(court_y) OVER w)
+                        / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ?,
+                    0
+                ) AS vy
             FROM players
             WHERE match_id = ?
             WINDOW w AS (PARTITION BY match_id, track_id ORDER BY frame_id)

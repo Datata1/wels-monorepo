@@ -1,5 +1,5 @@
 # Mycelium configuration. Edit to suit your repo.
-# See https://github.com/jdwiederstein/mycelium for the full schema.
+# See https://github.com/datata1/mycelium for the full schema.
 version: 1
 languages:
     - go

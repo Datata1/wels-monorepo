@@ -54,7 +54,7 @@ setup-backend:
 	done
 
 setup-frontend: $(MOON_BIN)
-	$(MOON_BIN) run frontend:setup
+	COREPACK_ENABLE_DOWNLOAD_PROMPT=0 $(MOON_BIN) run frontend:setup
 
 setup-hooks:
 	cd packages/backend && uv run pre-commit install
