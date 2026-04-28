@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
+    "duckdb>=1.5.2",
+    "opencv-python>=4.13.0.92",
 ]
 
 [project.optional-dependencies]
