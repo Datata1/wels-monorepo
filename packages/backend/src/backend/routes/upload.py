@@ -28,22 +28,27 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
         # Run wels-ingest from the ingestion package using Python module
         # Need to use the ingestion venv Python which has cv2 and other dependencies
         import os
+        import sys
 
         env = os.environ.copy()
         env.pop("VIRTUAL_ENV", None)  # Remove VIRTUAL_ENV to avoid conflicts
 
-        # Add ingestion src to PYTHONPATH (semicolon for Windows)
+        # Add ingestion src to PYTHONPATH (semicolon for Windows, colon for Unix)
         ingestion_src = str(MONOREPO_ROOT / "packages" / "ingestion" / "src")
         current_pythonpath = env.get("PYTHONPATH", "")
+        path_separator = ";" if sys.platform == "win32" else ":"
         if current_pythonpath:
-            env["PYTHONPATH"] = ingestion_src + ";" + current_pythonpath
+            env["PYTHONPATH"] = ingestion_src + path_separator + current_pythonpath
         else:
             env["PYTHONPATH"] = ingestion_src
 
-        # Use the ingestion venv Python (has cv2 and other dependencies)
-        ingestion_python = (
-            MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "Scripts" / "python.exe"
-        )
+        # Use the ingestion venv Python (platform-specific path)
+        if sys.platform == "win32":
+            ingestion_python = (
+                MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "Scripts" / "python.exe"
+            )
+        else:
+            ingestion_python = MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "bin" / "python"
 
         # Debug: print the PYTHONPATH being used
         print(f"DEBUG: PYTHONPATH={env['PYTHONPATH']}")
