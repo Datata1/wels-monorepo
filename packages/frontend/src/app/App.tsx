@@ -146,52 +146,84 @@ function generateMockAnalysis(): AnalysisData {
 function App() {
   const [state, setState] = useState<AppState>('dashboard');
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [matchId, setMatchId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   // Handle video upload and automatically start processing
-  const handleVideoUpload = (file: File) => {
+  const handleVideoUpload = (file: File, newMatchId: string) => {
     setVideoFile(file);
+    setMatchId(newMatchId);
     setState('processing');
     setProgress(0);
-    setCurrentStep(processingSteps[0]);
+    setCurrentStep('Video wird hochgeladen...');
   };
 
-  // Simulate batch processing
+  // Poll backend for actual processing status
   useEffect(() => {
-    if (state !== 'processing') return;
+    if (state !== 'processing' || !matchId) return;
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const newProgress = Math.min(prev + Math.random() * 8 + 2, 100);
+    const checkProcessingStatus = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/v1/videos/${matchId}/output`);
+        const data = await response.json();
         
-        // Update processing step based on progress
-        const stepIndex = Math.min(
-          Math.floor((newProgress / 100) * processingSteps.length),
-          processingSteps.length - 1
-        );
-        setCurrentStep(processingSteps[stepIndex]);
-
-        // When complete, generate results and automatically switch to results view
-        if (newProgress >= 100) {
+        // Update progress based on actual status from backend
+        if (data.status === 'ready') {
+          // Processing complete - output video is ready
+          setProgress(100);
+          setCurrentStep('Verarbeitung abgeschlossen!');
+          
+          // Go to results when output video is ready
           setTimeout(() => {
             setAnalysisData(generateMockAnalysis());
             setState('results');
           }, 500);
+        } else {
+          // Still processing - show waiting state
+          setCurrentStep('Pipeline läuft...');
+          // Fake progress for visual feedback only
+          setProgress((prev) => Math.min(prev + Math.random() * 3 + 1, 95));
         }
+      } catch (error) {
+        console.error('Error checking processing status:', error);
+        // Fall back to simulation if backend is not ready
+        setProgress((prev) => {
+          const newProgress = Math.min(prev + Math.random() * 8 + 2, 100);
+          
+          const stepIndex = Math.min(
+            Math.floor((newProgress / 100) * processingSteps.length),
+            processingSteps.length - 1
+          );
+          setCurrentStep(processingSteps[stepIndex]);
 
-        return newProgress;
-      });
-    }, 300);
+          if (newProgress >= 100) {
+            setTimeout(() => {
+              setAnalysisData(generateMockAnalysis());
+              setState('results');
+            }, 500);
+          }
+
+          return newProgress;
+        });
+      }
+    };
+
+    // Poll every 10 seconds
+    const interval = setInterval(checkProcessingStatus, 10000);
+    
+    // Initial check
+    checkProcessingStatus();
 
     return () => clearInterval(interval);
-  }, [state]);
+  }, [state, matchId]);
 
   const handleReset = () => {
     setState('dashboard');
     setVideoFile(null);
+    setMatchId(null);
     setProgress(0);
     setCurrentStep('');
     setAnalysisData(null);
@@ -316,7 +348,7 @@ function App() {
                 Neues Video analysieren
               </Button>
             </div>
-            <AnalysisResults data={analysisData} videoName={videoFile.name} />
+            <AnalysisResults data={analysisData} videoName={videoFile.name} matchId={matchId || undefined} />
           </motion.div>
         )}
       </div>
