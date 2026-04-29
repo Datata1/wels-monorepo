@@ -1,4 +1,7 @@
+import logging
+import os
 import subprocess
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -6,77 +9,67 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from backend.status import write_status
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
 # Configure paths - absolute paths from monorepo root
 # upload.py is at: packages/backend/src/backend/routes/upload.py
 # Need 6 parents to get to monorepo root: routes -> backend -> src -> backend -> packages -> root
 MONOREPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
-DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "videos"
+DATA_INPUT_VIDEOS = MONOREPO_ROOT / "data" / "input" / "videos"
 DATA_OUTPUT_VIDEOS = MONOREPO_ROOT / "data" / "output" / "videos"
 
 
 def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
-    """Run the wels-ingest pipeline in a background thread."""
-    # Ensure output directory exists
+    """Run the wels-ingest pipeline in a background thread, streaming output live."""
     DATA_OUTPUT_VIDEOS.mkdir(parents=True, exist_ok=True)
-
-    # Output video path
     output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
+    ingestion_dir = MONOREPO_ROOT / "packages" / "ingestion"
+
+    cmd = [
+        "uv",
+        "run",
+        "--extra",
+        "cv",
+        "wels-ingest",
+        video_path,
+        match_id,
+        "--output-video",
+        str(output_video),
+        "--imgsz",
+        "640",
+    ]
+    if sys.platform == "darwin":
+        cmd += ["--device", "cpu"]
 
     try:
-        # Run wels-ingest from the ingestion package using Python module
-        # Need to use the ingestion venv Python which has cv2 and other dependencies
-        import os
-        import sys
-
         env = os.environ.copy()
-        env.pop("VIRTUAL_ENV", None)  # Remove VIRTUAL_ENV to avoid conflicts
+        env.pop("VIRTUAL_ENV", None)
 
-        # Add ingestion src to PYTHONPATH (semicolon for Windows, colon for Unix)
-        ingestion_src = str(MONOREPO_ROOT / "packages" / "ingestion" / "src")
-        current_pythonpath = env.get("PYTHONPATH", "")
-        path_separator = ";" if sys.platform == "win32" else ":"
-        if current_pythonpath:
-            env["PYTHONPATH"] = ingestion_src + path_separator + current_pythonpath
-        else:
-            env["PYTHONPATH"] = ingestion_src
-
-        # Use the ingestion venv Python (platform-specific path)
-        if sys.platform == "win32":
-            ingestion_python = (
-                MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "Scripts" / "python.exe"
-            )
-        else:
-            ingestion_python = MONOREPO_ROOT / "packages" / "ingestion" / ".venv" / "bin" / "python"
-
-        # Debug: print the PYTHONPATH being used
-        print(f"DEBUG: PYTHONPATH={env['PYTHONPATH']}")
-        print(f"DEBUG: cwd={MONOREPO_ROOT}")
-        print(f"DEBUG: video={video_path}, match_id={match_id}")
-        print(f"DEBUG: python={ingestion_python}")
-
-        result = subprocess.run(
-            [
-                str(ingestion_python),
-                "-m",
-                "ingestion.cli",
-                video_path,
-                match_id,
-                "--output-video",
-                str(output_video),
-            ],
-            cwd=str(MONOREPO_ROOT),
-            capture_output=True,
-            text=True,
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(ingestion_dir),
             env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
-        if result.returncode != 0:
-            # Log error but don't fail the request
-            print(f"Ingestion failed for {match_id}: {result.stderr}")
-            print(f"STDOUT: {result.stdout}")
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            logger.info("[ingest %s] %s", match_id, line.rstrip())
+
+        returncode = proc.wait()
+        if returncode != 0:
+            logger.error("Ingestion failed for %s (exit code %d)", match_id, returncode)
+            write_status(match_id, "failed")
+        else:
+            write_status(match_id, "done")
     except Exception as e:
-        print(f"Error running ingestion for {match_id}: {e}")
+        logger.error("Error running ingestion for %s: %s", match_id, e)
+        write_status(match_id, "failed")
 
 
 # Module-level singleton for FastAPI File default
@@ -108,16 +101,11 @@ async def upload_video(
     file_path = DATA_INPUT_VIDEOS / safe_filename
 
     content = await file.read()
-    print(f"DEBUG: Upload - file={file.filename}, size={len(content)} bytes")
-
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Verify file was written
-    import os
-
-    file_size = os.path.getsize(file_path)
-    print(f"DEBUG: Written file size: {file_size} bytes")
+    # Mark as processing before spawning the worker thread
+    write_status(match_id, "processing")
 
     # Start ingestion pipeline in a background thread
     thread = threading.Thread(target=run_ingestion_pipeline, args=(match_id, str(file_path)))
@@ -135,10 +123,13 @@ async def upload_video(
 
 @router.get("/videos/{match_id}/output")
 async def get_output_video(match_id: str) -> JSONResponse:
-    """Get the output video path for a match."""
+    """Get the output video status for a match, based on the status file."""
+    from backend.status import read_status
+
+    status = read_status(match_id)
     output_video = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
 
-    if output_video.exists():
+    if status == "done" and output_video.exists():
         return JSONResponse(
             content={
                 "match_id": match_id,
@@ -146,33 +137,27 @@ async def get_output_video(match_id: str) -> JSONResponse:
                 "status": "ready",
             }
         )
-    else:
-        return JSONResponse(
-            content={
-                "match_id": match_id,
-                "video_path": None,
-                "status": "processing",
-            }
-        )
+
+    # Map status file values to API response values
+    api_status = "processing" if status == "processing" else status
+    return JSONResponse(
+        content={
+            "match_id": match_id,
+            "video_path": None,
+            "status": api_status,
+        }
+    )
 
 
 @router.get("/videos/{match_id}/output/video")
 async def stream_output_video(match_id: str):
-    """Stream the output video file."""
-    # First try to find the original input video (has h264 codec - browser compatible)
-    input_video = None
-    for f in DATA_INPUT_VIDEOS.glob(f"{match_id}_*"):
-        input_video = f
-        break
+    """Stream the annotated output video file."""
+    from fastapi.responses import FileResponse
 
-    # Use input video directly since annotated video may have incompatible codec
-    if input_video and input_video.exists():
-        from fastapi.responses import FileResponse
-
+    annotated = DATA_OUTPUT_VIDEOS / f"{match_id}_annotated.mp4"
+    if annotated.exists():
         return FileResponse(
-            path=str(input_video),
-            media_type="video/mp4",
-            filename=f"{match_id}_output.mp4",
+            path=str(annotated), media_type="video/mp4", filename=f"{match_id}_annotated.mp4"
         )
-    else:
-        raise HTTPException(status_code=404, detail="Output video not found")
+
+    raise HTTPException(status_code=404, detail="Output video not found")

@@ -20,6 +20,8 @@ from pathlib import Path
 from ingestion.config import IngestionSettings
 from ingestion.orchestrator import IngestionOrchestrator
 
+logger = logging.getLogger(__name__)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -81,6 +83,8 @@ def main(argv: list[str] | None = None) -> None:
         overrides["half"] = False
 
     settings = IngestionSettings(**overrides)  # type: ignore[arg-type]
+    if args.device is None:
+        settings = _with_available_default_device(settings)
     orchestrator = IngestionOrchestrator(settings)
 
     try:
@@ -88,6 +92,23 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+def _with_available_default_device(settings: IngestionSettings) -> IngestionSettings:
+    if settings.device != "cuda":
+        return settings
+
+    try:
+        import torch
+    except ImportError:
+        logger.warning("Torch is not installed; falling back from CUDA to CPU")
+        return settings.model_copy(update={"device": "cpu", "half": False})
+
+    if torch.cuda.is_available():
+        return settings
+
+    logger.warning("CUDA is not available; falling back to CPU")
+    return settings.model_copy(update={"device": "cpu", "half": False})
 
 
 if __name__ == "__main__":

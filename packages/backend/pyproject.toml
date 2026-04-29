@@ -2,12 +2,14 @@
 name = "wels-backend"
 version = "0.1.0"
 description = "WELS Handball Analytics — FastAPI Backend"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
+    "duckdb>=1.5.2",
+    "opencv-python>=4.13.0.92",
     "python-multipart>=0.0.26",
 ]
 

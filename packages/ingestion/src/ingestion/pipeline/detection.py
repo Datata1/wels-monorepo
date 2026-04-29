@@ -18,18 +18,14 @@ import numpy as np
 from ingestion.types import BoundingBox, Detection
 
 try:
-    import ultralytics as _ultralytics  # noqa: F401
+    import ultralytics
+
     AVAILABLE: bool = True
 except ImportError:
     AVAILABLE = False
 
 _PERSON_CLASS = 0  # COCO class ID
 
-try:
-    import ultralytics as _ultralytics  # noqa: F401
-    AVAILABLE: bool = True
-except ImportError:
-    AVAILABLE = False
 
 class PersonDetector:
     """YOLO11 + ByteTrack player detector."""
@@ -45,9 +41,7 @@ class PersonDetector:
         imgsz: int = 1280,
         half: bool = False,
     ) -> None:
-        from ultralytics import YOLO  # noqa: PLC0415
-
-        self._model = YOLO(model_path)
+        self._model = ultralytics.YOLO(model_path)
         self._model.to(device)
         self._confidence = confidence
         self._max_persons = max_persons

@@ -136,7 +136,7 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
   }
 
   // Convert file path to URL for video player
-  const videoUrl = `http://localhost:8000/api/v1/videos/${matchId}/output/video`;
+  const videoUrl = videoPath;
 
   console.log("DEBUG OutputVideoTab: videoPath =", videoPath, "status =", status);
 
@@ -156,15 +156,8 @@ function OutputVideoTab({ matchId }: { matchId?: string }) {
           src={videoPath}
           onError={(e) => {
             const target = e.target as HTMLVideoElement;
-            const error = target.error;
-            console.error("Video load error details:", {
-              error: error,
-              errorCode: error?.code,
-              errorMessage: error?.message,
-              networkState: target.networkState,
-              readyState: target.readyState,
-              src: target.src
-            });
+            console.error("Video load error:", target.error?.code, target.src);
+            setStatus('error');
           }}
           onLoadedMetadata={(e) => {
             const target = e.target as HTMLVideoElement;

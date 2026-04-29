@@ -19,6 +19,7 @@ ported) are silently skipped — the pipeline degrades gracefully rather than cr
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -141,11 +142,16 @@ class IngestionOrchestrator:
         conn.commit()
 
         annotator = FrameAnnotator() if output_video_path is not None else None
-        video_writer = (
-            _open_video_writer(output_video_path, meta.fps, meta.frame)
-            if output_video_path is not None
-            else None
-        )
+        video_writer: cv2.VideoWriter | None = None
+        if output_video_path is not None:
+            video_writer = _open_video_writer(output_video_path, meta.fps, meta.frame)
+            if not video_writer.isOpened():
+                logger.warning(
+                    "VideoWriter could not be opened for %s — annotated video will not be written",
+                    output_video_path,
+                )
+                video_writer = None
+                annotator = None
 
         logger.info("Phase 2: full pipeline (%d total frames)", meta.total_frames)
         with FrameWriter(conn, match_id) as writer:
@@ -155,11 +161,13 @@ class IngestionOrchestrator:
                 if video_writer is not None and annotator is not None:
                     video_writer.write(annotator.annotate(vf.frame, frame_state))
 
-                if vf.frame_id % 500 == 0:
+                if vf.frame_id % 1 == 0:
                     logger.info("  frame %d / %d", vf.frame_id, vf.total_frames)
 
         if video_writer is not None:
             video_writer.release()
+            assert output_video_path is not None
+            _ensure_h264(output_video_path)
 
         logger.info("Phase 3: post-processing (velocities + ball carrier)")
         _compute_velocities(conn, match_id, meta.fps)
@@ -173,33 +181,25 @@ class IngestionOrchestrator:
 
         players_raw: list[Detection] = []
         if self._person_detector is not None:
-            try:
+            with contextlib.suppress(NotImplementedError):
                 players_raw = self._person_detector.detect(frame)
-            except NotImplementedError:
-                pass
 
         ball_raw: Detection | None = None
         if self._ball_detector is not None:
-            try:
+            with contextlib.suppress(NotImplementedError):
                 ball_raw = self._ball_detector.detect(frame)
-            except NotImplementedError:
-                pass
 
         players: list[PlayerState] = []
         for det in players_raw:
             team = "unknown"
             if self._team is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     team = self._team.classify(frame, det.bbox)
-                except NotImplementedError:
-                    pass
 
             court_pos: tuple[float, float] | None = None
             if self._court is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     court_pos = self._court.transform(det.bbox.foot)
-                except NotImplementedError:
-                    pass
 
             players.append(
                 PlayerState(
@@ -215,10 +215,8 @@ class IngestionOrchestrator:
         if ball_raw is not None:
             ball_court_pos: tuple[float, float] | None = None
             if self._court is not None:
-                try:
+                with contextlib.suppress(NotImplementedError):
                     ball_court_pos = self._court.transform(ball_raw.bbox.center)
-                except NotImplementedError:
-                    pass
             ball = BallState(
                 bbox=ball_raw.bbox,
                 confidence=ball_raw.confidence,
@@ -239,8 +237,79 @@ def _open_video_writer(
     reference_frame: np.ndarray,  # type: ignore[type-arg]
 ) -> cv2.VideoWriter:
     h, w = reference_frame.shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
-    return cv2.VideoWriter(str(path), fourcc, fps, (w, h))
+    # Try H.264 first (browser-compatible), fall back to mp4v.
+    # mp4v (MPEG-4 Part 2) is not playable in browsers — _ensure_h264()
+    # will transcode it after the pipeline finishes.
+    for fourcc_str in ("avc1", "x264", "mp4v"):
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_str)  # type: ignore[attr-defined]
+        writer = cv2.VideoWriter(str(path), fourcc, fps, (w, h))
+        if writer.isOpened():
+            return writer
+    # Last resort: return the (possibly broken) writer so caller can detect it
+    return writer
+
+
+def _ensure_h264(path: Path) -> None:
+    """Re-encode to H.264 via ffmpeg if the file is not already H.264."""
+    import shutil
+    import subprocess
+
+    if shutil.which("ffprobe") is None:
+        logger.warning("ffprobe not found; skipping H.264 compatibility check for %s", path.name)
+        return
+
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    codec = result.stdout.strip()
+    if codec in ("h264", ""):
+        return  # already H.264 or probe failed — nothing to do
+
+    if shutil.which("ffmpeg") is None:
+        logger.warning("ffmpeg not found; skipping H.264 transcode for %s", path.name)
+        return
+
+    logger.info("Transcoding %s from %s to H.264 for browser playback", path.name, codec)
+    tmp = path.with_suffix(".tmp.mp4")
+    ret = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(tmp),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if ret.returncode == 0 and tmp.exists():
+        shutil.move(str(tmp), str(path))
+    else:
+        logger.warning("ffmpeg transcode failed (exit %d): %s", ret.returncode, ret.stderr[:500])
+        tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +336,16 @@ def _compute_velocities(conn: object, match_id: str, fps: float) -> None:
                 match_id,
                 frame_id,
                 track_id,
-                (court_x - LAG(court_x) OVER w)
-                    / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ? AS vx,
-                (court_y - LAG(court_y) OVER w)
-                    / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ? AS vy
+                COALESCE(
+                    (court_x - LAG(court_x) OVER w)
+                        / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ?,
+                    0
+                ) AS vx,
+                COALESCE(
+                    (court_y - LAG(court_y) OVER w)
+                        / NULLIF(frame_id - LAG(frame_id) OVER w, 0) * ?,
+                    0
+                ) AS vy
             FROM players
             WHERE match_id = ?
             WINDOW w AS (PARTITION BY match_id, track_id ORDER BY frame_id)

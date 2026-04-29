@@ -54,3 +54,4 @@ data/models/
 local-workspace/
 
 data/
+.mycelium/

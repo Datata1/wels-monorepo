@@ -1,14 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Upload, BarChart3, Users, TrendingUp, Calendar, Clock, Target, Award, Search, Filter, Video, Activity } from 'lucide-react';
+import { Upload, BarChart3,Calendar, Clock, Search, Filter, Video, Activity } from 'lucide-react';
 import { Button } from './ui/button';
 import logoImg from '../../imports/Logo.png';
+import { fetchMatches, MatchMeta, MatchStatus } from './api';
 
-interface MatchReport {
+
+interface DashboardProps {
+  onNewUpload: () => void;
+  onViewMatch: (matchId: string, data: any, fileName: string) => void;
+}
+
+type DashboardMatch = {
   id: string;
   fileName: string;
   date: string;
   duration: string;
+  status: MatchStatus;
   playersDetected: number;
   totalShots: number;
   successRate: number;
@@ -18,105 +26,21 @@ interface MatchReport {
     teamB: string;
     score: string;
   };
+};
+function mapApiMatchToDashboard(m: MatchMeta): DashboardMatch {
+  return {
+    id: m.match_id,
+    fileName: m.file_name || m.match_id,
+    date: m.date || '',
+    duration: m.duration || '',
+    status: m.status,
+    playersDetected: 0, 
+    totalShots: 0,
+    successRate: 0,
+    thumbnail: `${`${import.meta.env.VITE_BACKEND_URL || ''}/api/v1/matches/${m.match_id}/thumbnail`}`,
+    teams: { teamA: '', teamB: '', score: '' },
+  };
 }
-
-interface DashboardProps {
-  onNewUpload: () => void;
-  onViewMatch: (matchId: string, data: any, fileName: string) => void;
-}
-
-const mockMatches: MatchReport[] = [
-  {
-    id: '1',
-    fileName: 'Heimspiel_vs_TSV_Mannheim.mp4',
-    date: '2026-04-15',
-    duration: '54:07',
-    playersDetected: 14,
-    totalShots: 42,
-    successRate: 67,
-    thumbnail: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Blau',
-      score: '28:24'
-    }
-  },
-  {
-    id: '2',
-    fileName: 'Auswärtsspiel_Rhein_Neckar.mp4',
-    date: '2026-04-12',
-    duration: '51:34',
-    playersDetected: 14,
-    totalShots: 38,
-    successRate: 63,
-    thumbnail: 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Grün',
-      teamB: 'Weiß',
-      score: '25:27'
-    }
-  },
-  {
-    id: '3',
-    fileName: 'Training_Taktik_Session.mp4',
-    date: '2026-04-10',
-    duration: '48:22',
-    playersDetected: 12,
-    totalShots: 31,
-    successRate: 71,
-    thumbnail: 'https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Gelb',
-      score: '22:19'
-    }
-  },
-  {
-    id: '4',
-    fileName: 'Pokalspiel_Viertelfinale.mp4',
-    date: '2026-04-08',
-    duration: '56:45',
-    playersDetected: 14,
-    totalShots: 47,
-    successRate: 64,
-    thumbnail: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Blau',
-      teamB: 'Schwarz',
-      score: '30:29'
-    }
-  },
-  {
-    id: '5',
-    fileName: 'Ligaspiel_HC_Stuttgart.mp4',
-    date: '2026-04-05',
-    duration: '52:18',
-    playersDetected: 14,
-    totalShots: 40,
-    successRate: 70,
-    thumbnail: 'https://images.unsplash.com/photo-1589487391730-58f20eb2c308?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Rot',
-      teamB: 'Grün',
-      score: '28:25'
-    }
-  },
-  {
-    id: '6',
-    fileName: 'Derby_Lokalrivale.mp4',
-    date: '2026-04-01',
-    duration: '55:12',
-    playersDetected: 14,
-    totalShots: 44,
-    successRate: 66,
-    thumbnail: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?w=400&h=225&fit=crop',
-    teams: {
-      teamA: 'Weiß',
-      teamB: 'Rot',
-      score: '29:28'
-    }
-  }
-];
 
 function generateMockAnalysis(): any {
   return {
@@ -195,19 +119,86 @@ const getTeamColor = (color: string): string => {
   return colorMap[color] || 'bg-gray-500';
 };
 
+function StatusBadge({ status }: { status: MatchStatus }) {
+  switch (status) {
+    case 'done':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          Fertig
+        </span>
+      );
+    case 'processing':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Verarbeitung
+        </span>
+      );
+    case 'failed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          Fehlgeschlagen
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+          Unbekannt
+        </span>
+      );
+  }
+}
+
 export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
+
+  const [matches, setMatches] = useState<DashboardMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const matches = await fetchMatches();
+        setMatches(matches.map(mapApiMatchToDashboard));
+        setError(null);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Auto-refresh every 10s so processing status updates are visible
+    const interval = setInterval(async () => {
+      try {
+        const matches = await fetchMatches();
+        setMatches(matches.map(mapApiMatchToDashboard));
+      } catch {
+        // Silently ignore refresh errors
+      }
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
 
-  const totalAnalyses = mockMatches.length;
-  const totalVideoMinutes = mockMatches.reduce((acc, m) => {
+  const totalAnalyses = matches.length;
+  const totalVideoMinutes = matches.reduce((acc, m) => {
     const [min, sec] = m.duration.split(':').map(Number);
     return acc + min + (sec / 60);
   }, 0);
-  const lastAnalysisDate = mockMatches.length > 0 ? mockMatches[0].date : '';
+  const lastAnalysisDate = matches.length > 0 ? matches[0].date : '';
 
   const filteredMatches = useMemo(() => {
-    let filtered = mockMatches.filter(match =>
+    const filtered = matches.filter(match =>
       match.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       match.teams.teamA.toLowerCase().includes(searchQuery.toLowerCase()) ||
       match.teams.teamB.toLowerCase().includes(searchQuery.toLowerCase())
@@ -222,7 +213,7 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
     });
 
     return filtered;
-  }, [searchQuery, sortBy]);
+  }, [matches, searchQuery, sortBy]);
 
   return (
     <div className="min-h-screen">
@@ -328,6 +319,7 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
             <div className="flex items-center gap-2">
               <Filter className="w-5 h-5 text-gray-600" />
               <select
+                aria-label="Sortierung auswählen"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'date' | 'name')}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white"
@@ -339,7 +331,15 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
           </div>
         </div>
 
-        {filteredMatches.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12">
+            <span className="text-gray-500 text-lg">Lade Matches…</span>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <span className="text-red-500 text-lg">{error}</span>
+          </div>
+        ) : filteredMatches.length === 0 ? (
           <div className="text-center py-12">
             <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">Keine Matches gefunden</p>
@@ -347,31 +347,57 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMatches.map((match, index) => (
+            {filteredMatches.map((match, index) => {
+            const isClickable = match.status === 'done';
+            return (
             <motion.div
               key={match.id}
-              className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer group"
-              onClick={() => onViewMatch(match.id, generateMockAnalysis(), match.fileName)}
+              className={`bg-white rounded-xl shadow-lg overflow-hidden transition-all ${
+                isClickable ? 'hover:shadow-2xl cursor-pointer group' : 'opacity-80'
+              }`}
+              onClick={() => isClickable && onViewMatch(match.id, generateMockAnalysis(), match.fileName)}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.3 + index * 0.1 }}
-              whileHover={{ scale: 1.02 }}
+              whileHover={isClickable ? { scale: 1.02 } : undefined}
             >
               {/* Thumbnail */}
               <div className="relative h-40 overflow-hidden bg-gradient-to-br from-blue-900 to-sky-600">
-                <img
-                  src={match.thumbnail}
-                  alt={match.fileName}
-                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
-                />
+                {match.status === 'done' ? (
+                  <img
+                    src={match.thumbnail}
+                    alt={match.fileName}
+                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    {match.status === 'processing' && (
+                      <div className="text-white/70 text-center">
+                        <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-2" />
+                        <span className="text-sm">Wird verarbeitet…</span>
+                      </div>
+                    )}
+                    {match.status === 'failed' && (
+                      <div className="text-red-200 text-center">
+                        <span className="text-3xl">✕</span>
+                        <p className="text-sm mt-1">Verarbeitung fehlgeschlagen</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                <div className="absolute top-3 right-3">
+                  <StatusBadge status={match.status} />
+                </div>
                 <div className="absolute bottom-3 left-3 right-3">
                   <p className="text-white font-semibold text-sm truncate">{match.fileName}</p>
                   <div className="flex items-center gap-3 mt-1 text-white/90 text-xs">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {match.duration}
-                    </span>
+                    {match.duration && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {match.duration}
+                      </span>
+                    )}
                     <span className="font-bold">{match.teams.score}</span>
                   </div>
                 </div>
@@ -387,30 +413,47 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
                     <div className={`w-3 h-3 rounded-full ${getTeamColor(match.teams.teamB)}`}></div>
                     <span className="text-sm text-gray-700">{match.teams.teamB}</span>
                   </div>
-                  <span className="text-xs text-gray-500">{new Date(match.date).toLocaleDateString('de-DE')}</span>
+                  <span className="text-xs text-gray-500">{match.date ? new Date(match.date).toLocaleDateString('de-DE') : ''}</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Spieler</p>
-                    <p className="text-sm font-semibold text-gray-900">{match.playersDetected}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Würfe</p>
-                    <p className="text-sm font-semibold text-gray-900">{match.totalShots}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-500">Quote</p>
-                    <p className="text-sm font-semibold text-green-600">{match.successRate}%</p>
-                  </div>
-                </div>
+                {match.status === 'done' && (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Spieler</p>
+                        <p className="text-sm font-semibold text-gray-900">{match.playersDetected}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Würfe</p>
+                        <p className="text-sm font-semibold text-gray-900">{match.totalShots}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Quote</p>
+                        <p className="text-sm font-semibold text-green-600">{match.successRate}%</p>
+                      </div>
+                    </div>
 
-                <div className="mt-4 flex items-center justify-center text-sm text-sky-600 group-hover:text-sky-700 font-medium">
-                  Analyse öffnen →
-                </div>
+                    <div className="mt-4 flex items-center justify-center text-sm text-sky-600 group-hover:text-sky-700 font-medium">
+                      Analyse öffnen →
+                    </div>
+                  </>
+                )}
+
+                {match.status === 'processing' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-center text-sm text-amber-600">
+                    Pipeline läuft…
+                  </div>
+                )}
+
+                {match.status === 'failed' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-center text-sm text-red-600">
+                    Verarbeitung fehlgeschlagen
+                  </div>
+                )}
               </div>
             </motion.div>
-            ))}
+            );
+            })}
           </div>
         )}
       </motion.div>
@@ -426,4 +469,4 @@ export function Dashboard({ onNewUpload, onViewMatch }: DashboardProps) {
       </motion.div>
     </div>
   );
-}
+};

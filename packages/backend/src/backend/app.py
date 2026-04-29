@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routes import router as matches_router
 from backend.routes.upload import router as upload_router
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="WELS — Handball Analytics API",
@@ -13,7 +17,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

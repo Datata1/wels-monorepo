@@ -48,10 +48,13 @@ setup: setup-backend setup-frontend setup-moon setup-hooks
 
 setup-backend:
 	uv python install 3.12
-	cd packages/backend && uv sync --all-extras
+	@for pkg in $(PY_PACKAGES); do \
+		echo "Setting up $$pkg..."; \
+		cd $(CURDIR)/$$pkg && uv sync --all-extras; \
+	done
 
 setup-frontend: $(MOON_BIN)
-	$(MOON_BIN) run frontend:setup
+	COREPACK_ENABLE_DOWNLOAD_PROMPT=0 $(MOON_BIN) run frontend:setup
 
 setup-hooks:
 	cd packages/backend && uv run pre-commit install
