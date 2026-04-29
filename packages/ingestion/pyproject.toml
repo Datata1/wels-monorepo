@@ -2,7 +2,7 @@
 name = "wels-ingestion"
 version = "0.1.0"
 description = "WELS Handball Analytics — Video ingestion and CV pipeline"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "duckdb>=1.2",
     "lapx[cv]>=0.9.4",
@@ -19,6 +19,11 @@ cv = [
     "torch>=2.1,<2.11",
     "ultralytics>=8.1",
 ]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+]
 
 [tool.uv.sources]
 torch = [
@@ -32,11 +37,6 @@ torchvision = [
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "ruff>=0.9",
-]
 
 [project.scripts]
 wels-ingest = "ingestion.cli:main"

@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -45,9 +46,13 @@ def run_ingestion_pipeline(match_id: str, video_path: str) -> None:
         cmd += ["--device", "cpu"]
 
     try:
+        env = os.environ.copy()
+        env.pop("VIRTUAL_ENV", None)
+
         proc = subprocess.Popen(
             cmd,
             cwd=str(ingestion_dir),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

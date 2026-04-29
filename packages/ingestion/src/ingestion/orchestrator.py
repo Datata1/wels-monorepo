@@ -254,6 +254,10 @@ def _ensure_h264(path: Path) -> None:
     import shutil
     import subprocess
 
+    if shutil.which("ffprobe") is None:
+        logger.warning("ffprobe not found; skipping H.264 compatibility check for %s", path.name)
+        return
+
     result = subprocess.run(
         [
             "ffprobe",
@@ -273,6 +277,10 @@ def _ensure_h264(path: Path) -> None:
     codec = result.stdout.strip()
     if codec in ("h264", ""):
         return  # already H.264 or probe failed — nothing to do
+
+    if shutil.which("ffmpeg") is None:
+        logger.warning("ffmpeg not found; skipping H.264 transcode for %s", path.name)
+        return
 
     logger.info("Transcoding %s from %s to H.264 for browser playback", path.name, codec)
     tmp = path.with_suffix(".tmp.mp4")

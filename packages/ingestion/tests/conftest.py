@@ -13,7 +13,7 @@ import pytest
 def synthetic_video(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """
     Write a tiny 5-frame synthetic MP4 using only numpy + opencv.
-    No GPU, no real video required. 320×240, 25 fps.
+    No GPU, no real video required. 320x240, 25 fps.
     Each frame has a moving white rectangle to simulate a detection region.
     """
     out = tmp_path_factory.mktemp("fixtures") / "test_video.mp4"

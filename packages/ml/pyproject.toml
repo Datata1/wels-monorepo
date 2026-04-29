@@ -2,7 +2,7 @@
 name = "wels-ml"
 version = "0.1.0"
 description = "WELS Handball Analytics — ML model training and inference"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "duckdb>=1.2",
     "numpy>=1.26",
